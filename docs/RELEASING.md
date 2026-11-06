@@ -170,6 +170,12 @@ verification documents in `docs/verification/`, and the v1.0.0 example crate in 
 3. Follow the run: `plan` (tag equals `__version__`, CHANGELOG section present and dated),
    `openapi`, `images` (build, self-test, scan), `publish-images`, `wheel`, `publish-pypi` (approve
    the `pypi` environment), `release-assets`, `publish-release`.
+   The `wheel` job writes the build kit of the tagged commit
+   (`scripts/release/make_buildkit.py`: `qrosetta_cli/release/buildkit.tar.gz` and `buildkit.json`)
+   before it builds the wheel, and `check_dist.py --require-buildkit` stops the job when the kit is
+   missing, over 15 MB or does not match its recorded sha256. The same commit gives the same kit
+   bytes, so `python scripts/release/make_buildkit.py --out /some/dir/buildkit.tar.gz` on the tag
+   reproduces the wheel's copy (`unzip -p` the wheel and `cmp`).
 4. `publish-release` drafts the release with the files, the CHANGELOG section and GitHub's
    generated notes, downloads the attached files and checks them against `SHA256SUMS`, then
    publishes. If it fails before publishing, the draft stays: re-run the job, which deletes a
@@ -241,7 +247,8 @@ print. A host that already runs a stack from a checkout needs the changes in the
    globally available` and `- qrosetta`.
 
 2. `qrosetta version` prints `qrosetta X.Y.Z`, then the rows `Mode  installed mode` and
-   `Release manifest  release X.Y.Z (images published)`.
+   `Release manifest  release X.Y.Z (images published)`; `qrosetta doctor` shows a `buildkit`
+   row "build kit present".
 
 3. The release files are the attested ones, and PyPI has the same wheel.
 

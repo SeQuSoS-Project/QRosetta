@@ -30,6 +30,11 @@ signed images on GHCR; and every result records the image, commit and host condi
   `profiles`, `config path|show`, `version` and `api` (raw requests).
 - Release images by digest: `pull` and `images ls|verify|save|load`, checking the cosign signature
   when cosign is installed.
+- `build` without a checkout: the wheel carries a build kit (the release commit's Dockerfiles and
+  the files they copy, about 2.6 MB), from which an installed `qrosetta build [NAME…|--profile P]`
+  builds any service, myQLM, cuQuantum and BQSKit included, as `<service>:<version>-buildkit` with
+  the commit `<release commit>+buildkit`; `start`, `status`, `images` and `remove --images` treat
+  those images as the stack's local builds, and `pull` switches a service back to the release image.
 - Commands for a local or remote server: `info`, `backends`, `compilers`, `circuits`, `login`,
   `logout`, `whoami`, `run` (one circuit or a playlist; `--exclusive`, `--repeats`, `--compiler`,
   `--fail-on`, `--dry-run`), `wait`, `jobs`, `show summary`, `export crate|report` and `selftest`.
