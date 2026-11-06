@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from qrosetta_cli import __version__, jobstore, layout, localstack, output
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import result
-from qrosetta_cli.stack import engine as eng, hostload, quota
+from qrosetta_cli.stack import engine as eng, hostload, ports, quota
 from qrosetta_cli.stack.explain import DELEGATE_DROPIN, OTHER_BIND, SUBUID_FIX, probe_message
 
 GIB = 1024**3
@@ -193,6 +193,7 @@ def local_services(ctx):
 class Report:
     checks: list = field(default_factory=list)
     next_command: str | None = None
+    port_choice: str | None = None
 
     def add(self, cid, status, message, fix="", steps=None, reason=None):
         self.checks.append(Check(cid, status, message, fix, steps, reason))
@@ -397,15 +398,26 @@ def _unspecified(host):
         return False
 
 
-def publishes(host, engine_name, env, bind):
-    """Whether this stack's running web server container is published on `bind`."""
-    project = localstack.project(env)
-    return bool(engine_name) and any(same_address(a, bind) for a in host.web_addresses(engine_name, project))
+def own_addresses(host, engine_name, env):
+    """A test of whether an address is this stack's own (its labelled web server container
+    publishes it), reading the engine at most once."""
+    found: list = []
+
+    def ours(bind):
+        if not engine_name:
+            return False
+        if not found:
+            found.append(host.web_addresses(engine_name, localstack.project(env)))
+        return any(same_address(a, bind) for a in found[0])
+
+    return ours
 
 
-def check_port(host, rep, bind, answers, cfg=None):
+def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False):
     """`answers`: whether a Quantum Rosetta answers at `bind` (a callable is asked only when the
-    port is in use); `cfg` lets the fix name the config file."""
+    port is in use); `cfg` lets the fix name the config file. `fallback` (given when the user did
+    not choose `bind`) returns the address `start` would use instead, or None; the row then says
+    so and `rep.port_choice` holds it. `recorded`: `start` chose `bind` earlier."""
     address, _, port = bind.rpartition(":")
     address = address.strip("[]") or "127.0.0.1"
     if not port.isdigit():
@@ -423,14 +435,17 @@ def check_port(host, rep, bind, answers, cfg=None):
             "bind_invalid",
         )
     elif host.port_free(address, int(port)):
-        rep.add("port", "PASS", f"{bind} is free")
+        rep.add("port", "PASS", f"{bind} is free" + (" (`qrosetta start` chose it earlier)" if recorded else ""))
     elif answers() if callable(answers) else answers:
         rep.add("port", "PASS", f"{bind} is in use by a running Quantum Rosetta")
+    elif fallback is not None and (other := fallback()):
+        rep.port_choice = other
+        rep.add("port", "INFO", f"{bind} is in use; `qrosetta start` will use {other}")
     else:
         rep.add(
             "port",
             "FAIL",
-            f"{bind} is in use",
+            f"{ports.range_text()} are all in use" if fallback else f"{bind} is in use",
             f"qrosetta start -d --bind {OTHER_BIND}\n"
             f'Later commands use {bind} until [lifecycle] bind = "{OTHER_BIND}" is in the file '
             "`qrosetta config path` prints; with it, `start` needs no --bind.",
@@ -658,8 +673,9 @@ def run(ctx, host=None):
         if choice.name == "podman":
             check_podman(host, rep, choice)
         check_controllers(host, rep, choice, localstack.cpu_quota(host.env, ctx.cfg)[0])
-    bind = ctx.cfg.get("lifecycle", "bind") or servers.DEFAULT_BIND
-    server = servers.Server(servers.LOCAL, servers.bind_url(bind), "lifecycle.bind")
+    chosen = ports.resolve(ctx, with_flag=False)
+    bind = chosen.address
+    server = servers.Server(servers.LOCAL, servers.bind_url(bind), chosen.source)
     config, transport = None, None
     try:
         transport = ctx.transport(server=server, timeout=5)
@@ -668,8 +684,16 @@ def run(ctx, host=None):
         ctx.note_handshake(handshake.server_block(config))
     except CliError:
         config = None
-    name = choice.name if choice else None
-    check_port(host, rep, bind, config is not None or (lambda: publishes(host, name, ctx.env, bind)), ctx.cfg)
+    ours = own_addresses(host, choice.name if choice else None, ctx.env)
+    check_port(
+        host,
+        rep,
+        bind,
+        config is not None or (lambda: ours(bind)),
+        ctx.cfg,
+        None if chosen.chosen else (lambda: ports.search(host, ours, skip=bind)),
+        chosen.source == "stack setting",
+    )
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)

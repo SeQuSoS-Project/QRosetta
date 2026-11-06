@@ -74,12 +74,12 @@ def _effective(ctx):
     add("lifecycle.engine", value or "the first of docker and podman whose `info` answers", source)
     value, source = cfgmod.env_or_config(env, "QROSETTA_ON_EXIT", cfg, "lifecycle", "on_exit")
     add("lifecycle.on_exit", value or "ask on a terminal, else standby", source)
-    bind = cfg.get("lifecycle", "bind")
-    add(
-        "lifecycle.bind",
-        bind or "127.0.0.1:8080 (the compose default, QROSETTA_HTTP_BIND)",
-        "config lifecycle.bind" if bind else "default",
-    )
+    bind, source = localstack.local_bind(env, cfg)
+    if source == "default":
+        bind = f"{bind} (the compose default, {localstack.BIND_VAR})"
+    elif source == "stack setting":
+        bind = f"{bind} (`qrosetta start` chose it: port 8080 was in use)"
+    add("lifecycle.bind", bind, source)
     quota, since, source = localstack.cpu_quota(env, cfg)
     add("lifecycle.cpu_quota", quota, f"{source}, since {since}" if since else source)
     jobs = jobstore.resolve(env, cfg)

@@ -260,6 +260,10 @@ signed images on GHCR; and every result records the image, commit and host condi
 - `qrosetta start` ends with the address the server runs at, whether only this computer or other
   computers can reach it (with this host's name and address when every interface is published),
   and the addresses of the manual and the API docs; `qrosetta status` begins with the same lines.
+- When another program holds 127.0.0.1:8080 and no address was chosen (`--bind`,
+  `QROSETTA_HTTP_BIND`, `[lifecycle] bind`), `qrosetta start` publishes on the first free port of
+  8081 to 8089 on 127.0.0.1, says which, and keeps using it until `qrosetta remove`; the other
+  commands find the local server there. A chosen address that is in use is still refused.
 
 #### Images
 

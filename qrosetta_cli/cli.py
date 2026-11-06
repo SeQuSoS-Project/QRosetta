@@ -541,8 +541,9 @@ def build_parser():
     p.add_argument(
         "--bind",
         metavar="ADDR:PORT",
-        help="publish the web server here (default: config "
-        "lifecycle.bind, else 127.0.0.1:8080); non-loopback addresses get no TLS",
+        help="publish the web server here (default: $QROSETTA_HTTP_BIND, config lifecycle.bind, else "
+        "127.0.0.1:8080, or the first free port up to 8089 when another program holds it); "
+        "non-loopback addresses get no TLS",
     )
     p.add_argument("--yes", "-y", action="store_true", help="start services even while runs are in flight")
     p.add_argument(

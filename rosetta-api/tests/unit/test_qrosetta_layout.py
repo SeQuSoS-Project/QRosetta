@@ -217,7 +217,7 @@ def test_start_stops_before_compose_when_a_check_fails(project, env, capsys):
     err = capsys.readouterr().err
     lines = err.splitlines()
     assert lines[0] == "qrosetta: not started, because 1 check failed."
-    assert "FAIL  port           127.0.0.1:8080 is in use" in lines and "PASS  engine" in err
+    assert "FAIL  port           127.0.0.1:8080 to 127.0.0.1:8089 are all in use" in lines and "PASS  engine" in err
     assert "  1. Use port 8090 for this and every later command:" in lines
     assert lines[-1] == "       qrosetta start -d" and "subuid" not in err and "disk" not in err
     assert _cli(fake, project, env, ["start", "-d", "--json"], FakeHost(env, port_free=False)) == Exit.ENGINE

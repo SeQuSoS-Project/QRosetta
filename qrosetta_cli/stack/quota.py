@@ -145,7 +145,7 @@ def record(env, project, enabled, sha256):
     """Record the setting `start` used for `project`; returns it. Nothing is written for a
     project that never ran without the quota."""
     old = localstack.stack_settings(env, project)
-    if enabled and not old:
+    if enabled and "cpu_quota" not in old:
         return {"cpu_quota": True, "since": None}
     since = old.get("since") if old.get("cpu_quota") == enabled else output.utc_now()
     values = {
@@ -154,8 +154,9 @@ def record(env, project, enabled, sha256):
         "override": None if enabled else override_path(env),
         "override_sha256": sha256,
     }
-    if values != old:
-        localstack.write_stack_settings(env, project, values)
+    kept = {k: v for k, v in old.items() if k not in values}
+    if {**kept, **values} != old:
+        localstack.write_stack_settings(env, project, {**kept, **values})
     return values
 
 

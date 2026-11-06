@@ -563,11 +563,13 @@ class Server:
         notice=None,
         stale=(),
         jobs_line=None,
+        removed=None,
     ):
         self.engine, self.stack, self.action = engine, stack, action
         self.services, self.adding, self.bind = services, adding, bind
         self.stale = list(stale)
         self.jobs_line = jobs_line
+        self.removed = removed or (lambda: None)
         self.ask = ask or (lambda q: output.prompt(q, timeout=ASK_TIMEOUT_SEC))
         self.tty = tty
         self.lock = lock or (lambda what: _null_lock())
@@ -692,6 +694,7 @@ class Server:
         with self.notice("remove" if action == "remove" else "stop", None, True):
             if action == "remove":
                 actions.remove_stack(self.engine, self.stack)
+                self.removed()
                 return 0
             return actions.report_left(actions.stop_stack(self.engine, self.stack))
 

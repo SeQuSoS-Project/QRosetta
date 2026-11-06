@@ -8,7 +8,7 @@ from qrosetta_cli import jobstore, layout, localstack, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard, hostload, installed, preflight, profiles, quota, serve
+from qrosetta_cli.stack import actions, guard, hostload, installed, ports, preflight, profiles, quota, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import TRANSFER_TIMEOUT_SEC, Engine, choose_engine, timed_out
@@ -41,9 +41,12 @@ def open_stack(ctx, cpu_quota=None):
     return mode, engine, stack
 
 
-def _bind(ctx):
-    bind = ctx.opt("bind") or ctx.cfg.get("lifecycle", "bind")
-    return serve.check_bind(bind) if bind else None
+def _bind(bind):
+    """The value compose gets as QROSETTA_HTTP_BIND (None: compose's default or the .env), with
+    --bind and config lifecycle.bind checked as before."""
+    if bind.source in ("--bind", "config lifecycle.bind"):
+        serve.check_bind(bind.address)
+    return bind.compose_value
 
 
 def check_host(allow_emulation, system=None, machine=None):
@@ -118,14 +121,16 @@ def cmd_start(ctx):
     if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "installed":
         installed.require_published()
     cpu_quota, _ = quota.wanted(ctx)
-    preflight.check(ctx, cpu_quota)
+    chosen = preflight.decide(ctx, cpu_quota)
     hostload.ensure_token(ctx.env)
     _, engine, stack = open_stack(ctx, cpu_quota)
     quota.check_host(engine, cpu_quota)
     setting = quota.record(ctx.env, stack.name, cpu_quota, stack.cpu_override_sha256)
     if not cpu_quota:
         output.warn(quota.describe_off(setting.get("since")), "cpu_quota_off")
-    bind = _bind(ctx)
+    bind = _bind(chosen)
+    if not chosen.chosen:
+        localstack.record_bind(ctx.env, stack.name, chosen.address)
     jobs = set_up_env(ctx, engine, bind)
     found = own.scan(engine, stack)
     serve.check_startable(engine, found)
@@ -164,14 +169,14 @@ def cmd_start(ctx):
                 hostload.notice(ctx, url, kind, stale_ids, expect_server_gone=gone),
                 guard.engine_lock(ctx.env, "start"),
             ):
-                serve.up(engine, recreated, adding, bind, recreate=True, stack=stack)
+                serve.up(engine, recreated, adding, chosen.address, recreate=True, stack=stack)
         with hostload.notice(ctx, url if fresh_start else None, "start", ids):
             if fresh_start:
                 progress(
                     f"Starting {len(fresh_start)} services" + (" beside the running ones" if adding else "") + "..."
                 )
                 with guard.engine_lock(ctx.env, "start"):
-                    serve.up(engine, fresh_start, adding, bind, stack=stack)
+                    serve.up(engine, fresh_start, adding, chosen.address, stack=stack)
             elif not stale:
                 progress("Every requested service is already running.")
             ready = serve.wait_ready(ctx, engine, stack, services)
@@ -206,10 +211,11 @@ def cmd_start(ctx):
         tty=ctx.tty,
         adding=adding,
         lock=serve.lock_for(ctx.env),
-        bind=bind,
+        bind=chosen.address,
         notice=_notices(ctx, engine, stack),
         stale=stale,
         jobs_line=jobstore.line(jobs),
+        removed=lambda: localstack.forget_bind(ctx.env, stack.name),
     )
     return Result(server.run(), None)
 
@@ -263,6 +269,7 @@ def cmd_remove(ctx):
             ask=lambda q: output.prompt(q, stdin=ctx.stdin),
             everything=everything,
         )
+    localstack.forget_bind(ctx.env, stack.name)
     return Result(
         0, {"images": args.images or everything, "data": args.data or everything, "all": everything, "removed": removed}
     )
@@ -270,7 +277,7 @@ def cmd_remove(ctx):
 
 def cmd_status(ctx):
     mode, engine, stack = open_stack(ctx)
-    jobs = set_up_env(ctx, engine, ctx.cfg.get("lifecycle", "bind"))
+    jobs = set_up_env(ctx, engine, ports.resolve(ctx, with_flag=False).compose_value)
     from qrosetta_cli.stack.status import status
 
     return Result(0, status(ctx, engine, stack, mode, jobs))

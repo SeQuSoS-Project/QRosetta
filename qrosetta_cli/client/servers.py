@@ -7,12 +7,12 @@ import stat
 import urllib.parse
 from dataclasses import dataclass
 
-from qrosetta_cli import config as cfgmod, output
+from qrosetta_cli import config as cfgmod, localstack, output
 from qrosetta_cli.client.transport import HttpTransport, is_loopback, origin
 from qrosetta_cli.errors import CliError, Exit, usage
 
 LOCAL = "local"
-DEFAULT_BIND = "127.0.0.1:8080"
+DEFAULT_BIND = localstack.DEFAULT_BIND
 
 
 def bind_url(bind):
@@ -57,8 +57,8 @@ def select(flag, env, cfg):
         (cfg.get("default_server"), "config default_server"),
     ):
         if value:
-            return resolve(value, source, cfg)
-    return resolve(LOCAL, "default", cfg)
+            return resolve(value, source, cfg, env)
+    return resolve(LOCAL, "default", cfg, env)
 
 
 def check_url(url, source):
@@ -73,7 +73,9 @@ def check_url(url, source):
     return url
 
 
-def resolve(value, source, cfg):
+def resolve(value, source, cfg, env=None):
+    """A server by URL or [servers.NAME] table; the local stack without a url is found at the
+    address it is published on (`localstack.local_bind`)."""
     if "://" in value:
         url = check_url(value.rstrip("/"), source)
         return Server(url, url, source)
@@ -86,7 +88,8 @@ def resolve(value, source, cfg):
             reason="unknown_server",
         )
     table = table or {}
-    url = check_url((table.get("url") or bind_url(cfg.get("lifecycle", "bind"))).rstrip("/"), f"[servers.{value}] url")
+    url = table.get("url") or bind_url(localstack.local_bind(os.environ if env is None else env, cfg)[0])
+    url = check_url(url.rstrip("/"), f"[servers.{value}] url")
     return Server(value, url, source, bool(table.get("allow_insecure_http")))
 
 

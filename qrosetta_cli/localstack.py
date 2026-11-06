@@ -1,5 +1,6 @@
 """What both halves read about the local stack: the lifecycle token `qrosetta start` writes, and
-the stack settings it records in the state directory (the CPU quota setting, spec §6.1)."""
+the stack settings it records in the state directory (the CPU quota setting, spec §6.1, and the
+address `start` published the web server on when port 8080 was taken)."""
 
 import json
 import os
@@ -10,6 +11,8 @@ from qrosetta_cli import config as cfgmod
 TOKEN_FILE = "lifecycle.token"
 SETTINGS_FILE = "stack-settings.json"
 DEFAULT_PROJECT = "qsimulators"
+DEFAULT_BIND = "127.0.0.1:8080"
+BIND_VAR = "QROSETTA_HTTP_BIND"
 
 
 def token_path(env):
@@ -55,10 +58,14 @@ def stack_settings(env, name=None):
 
 
 def write_stack_settings(env, name, values):
-    """Replace project `name`'s recorded settings with `values`, through a temporary file."""
+    """Replace project `name`'s recorded settings with `values` (none left: the project's entry
+    goes), through a temporary file."""
     data = _read_all(env)
     projects = data.get("projects") if isinstance(data.get("projects"), dict) else {}
-    projects[name] = values
+    if values:
+        projects[name] = values
+    else:
+        projects.pop(name, None)
     data = {"schema": "qrosetta.cli/stack-settings@1", "projects": projects}
     directory = os.path.dirname(settings_path(env))
     os.makedirs(directory, exist_ok=True)
@@ -83,3 +90,42 @@ def cpu_quota(env, cfg, name=None):
     if isinstance(value, bool):
         return value, None, "config lifecycle.cpu_quota"
     return True, None, "default"
+
+
+def chosen_bind(env, cfg):
+    """(address, source) the user chose without a flag: QROSETTA_HTTP_BIND in the environment,
+    else config lifecycle.bind; (None, None) when neither is set."""
+    value = (env.get(BIND_VAR) or "").strip()
+    if value:
+        return value, f"env {BIND_VAR}"
+    value = cfg.get("lifecycle", "bind")
+    if value:
+        return value, "config lifecycle.bind"
+    return None, None
+
+
+def local_bind(env, cfg, name=None):
+    """(address, source) of the local web server: a chosen address, else the one `start`
+    recorded for the project (port 8080 was taken), else 127.0.0.1:8080."""
+    value, source = chosen_bind(env, cfg)
+    if value:
+        return value, source
+    recorded = stack_settings(env, name).get("bind")
+    if isinstance(recorded, str) and recorded:
+        return recorded, "stack setting"
+    return DEFAULT_BIND, "default"
+
+
+def record_bind(env, name, bind):
+    """Record the address `start` publishes project `name` on; None or the default forgets it."""
+    old = stack_settings(env, name)
+    values = {k: v for k, v in old.items() if k != "bind"}
+    if bind and bind != DEFAULT_BIND:
+        values["bind"] = bind
+    if values != old:
+        write_stack_settings(env, name, values)
+
+
+def forget_bind(env, name):
+    """Drop the recorded address of project `name` (its containers are gone)."""
+    record_bind(env, name, None)
