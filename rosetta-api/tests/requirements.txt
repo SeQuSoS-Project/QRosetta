@@ -1,6 +1,6 @@
-pytest==9.0.3
-pytest-asyncio==1.4.0
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
 pytest-xdist==3.8.0
-hypothesis==6.112.1
+hypothesis==6.170.14
 pytest-cov==7.1.0
-coverage==7.16.2
+coverage==7.17.0
