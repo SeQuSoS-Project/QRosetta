@@ -173,9 +173,11 @@ verification documents in `docs/verification/`, and the v1.0.0 example crate in 
    The `wheel` job writes the build kit of the tagged commit
    (`scripts/release/make_buildkit.py`: `qrosetta_cli/release/buildkit.tar.gz` and `buildkit.json`)
    before it builds the wheel, and `check_dist.py --require-buildkit` stops the job when the kit is
-   missing, over 15 MB or does not match its recorded sha256. The same commit gives the same kit
-   bytes, so `python scripts/release/make_buildkit.py --out /some/dir/buildkit.tar.gz` on the tag
-   reproduces the wheel's copy (`unzip -p` the wheel and `cmp`).
+   missing, over 15 MB or does not match its recorded sha256. The same commit gives the same tar
+   stream, so `python scripts/release/make_buildkit.py --out /some/dir/buildkit.tar.gz` on the tag
+   reproduces the wheel's copy: compare `gunzip -c ... | sha256sum` of both (`unzip -p` the wheel
+   for its copy). The gzip bytes match only with the same zlib: Fedora and RHEL ship zlib-ng,
+   whose deflate output differs from the runner's zlib.
 4. `publish-release` drafts the release with the files, the CHANGELOG section and GitHub's
    generated notes, downloads the attached files and checks them against `SHA256SUMS`, then
    publishes. If it fails before publishing, the draft stays: re-run the job, which deletes a

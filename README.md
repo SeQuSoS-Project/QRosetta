@@ -185,7 +185,9 @@ qrosetta export crate                 # its RO-Crate
 
 `selftest` compares every started backend with answers computed independently of any SDK and
 checks the host conditions that affect timings. It exits 0 when no check fails and names each
-backend outside the started profile as "not started in this stack".
+backend outside the started profile as "not started in this stack"; on an installed release it
+names those the release does not include (myQLM, cuQuantum) as "not included in this release",
+with the `qrosetta build` command that adds them.
 
 ### Address and port
 
@@ -194,8 +196,11 @@ program holds port 8080 and no address was chosen, `start` publishes on the firs
 8081 to 8089 on 127.0.0.1 and prints `Port 8080 is in use by another program; using 8081.`
 It records the port for the project; `status`, `run` and the other commands find the server
 there, and `qrosetta remove` forgets it. An address is chosen with `start --bind ADDR:PORT`,
-`QROSETTA_HTTP_BIND` in the environment (or in a checkout's `.env`), or `bind` under
-`[lifecycle]` in the config file; a chosen address that is in use stops `start`.
+`QROSETTA_HTTP_BIND` in the environment (or in a checkout's `.env`; `127.0.0.1:8080` there
+chooses nothing), or `bind` under `[lifecycle]` in the config file; a chosen address that is in
+use stops `start`. Another Quantum Rosetta project on this computer publishing the port also
+stops `start`, whichever address it is, with the command that stops that project: one project
+runs at a time.
 
 In local mode any client may lift the circuit-size, gate-count and experiment-size limits
 (`bypass_limits`). Publish the server on other interfaces only on a network you trust, for

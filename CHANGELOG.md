@@ -268,7 +268,10 @@ signed images on GHCR; and every result records the image, commit and host condi
 - When another program holds 127.0.0.1:8080 and no address was chosen (`--bind`,
   `QROSETTA_HTTP_BIND`, `[lifecycle] bind`), `qrosetta start` publishes on the first free port of
   8081 to 8089 on 127.0.0.1, says which, and keeps using it until `qrosetta remove`; the other
-  commands find the local server there. A chosen address that is in use is still refused. A
+  commands find the local server there, or at the address the environment, the config file or a
+  checkout's `.env` chose. A `.env` value of `127.0.0.1:8080`, as `.env.example` set it, chooses
+  nothing, and `.env.example` leaves the address unset. A chosen address that is in use is still
+  refused, with a fix that changes the setting that chose it. A
   Quantum Rosetta that no container of this user publishes counts as another program
   ("Port 8080 is used by another Quantum Rosetta (not this project); using 8081."); when another
   project's web server on this computer publishes the address, `start` and `doctor` refuse and
@@ -340,6 +343,19 @@ signed images on GHCR; and every result records the image, commit and host condi
 
 ### Fixed
 
+- `qrosetta build` from the build kit failed with "File exists" on every later run once the
+  unpacked copy in the cache had lost its marker file, and two builds started together could
+  delete the directory the other was building from. The unpacked copy's directories took the
+  user's umask, so under umask 027 the nginx image would hold page folders its user cannot read;
+  they are 0755 now.
+- An installed `qrosetta build` stopped with Ctrl-C, or failing on one of its services, did not
+  record the images it had built, so `start` ran them while the page and `doctor` called them
+  "not included in this release"; `remove --images` forgot kit builds it had not removed.
+- `qrosetta start` refused a `.env` address followed by a comment (`QROSETTA_HTTP_BIND=127.0.0.1:9000
+  # moved`), which compose accepts.
+- The Backends and Compile-only services popovers offered `qrosetta pull --profile full` to add
+  every listed service, including those the release does not include or that need a GPU; the line
+  now names how many are not running and adds those.
 - In a `qrosetta run` or `selftest` result folder with two or more jobs, `sha256sum -c` reported
   `../plan.json` as changed in every job folder but the last, because each later job rewrote it.
   A job folder's `SHA256SUMS` now lists its own files only; `plan.json` (and `selftest.json`) are

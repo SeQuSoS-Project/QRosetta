@@ -74,8 +74,9 @@
                     Qulacs, QuEST, quimb, myQLM, PyQuil, Qrisp, cuQuantum and TorchQuantum.
                     <code>GET /runners</code> lists the backends a server offers. The published release
                     images do not include myQLM and cuQuantum, which their vendors distribute under their
-                    own licence terms; a checkout of the repository builds them, and cuQuantum also needs
-                    an NVIDIA GPU.
+                    own licence terms; <code>qrosetta build myqlm cuquantum</code> builds them on this
+                    computer, from the build files the package carries or from a checkout of the
+                    repository, and cuQuantum also needs an NVIDIA GPU.
                 </p>
                 <p>
                     Every backend receives the circuit in the same request format and answers in the same
@@ -136,7 +137,9 @@
                     By default nginx is published on <code>127.0.0.1:8080</code>, so only this computer
                     can reach the page. When another program holds port 8080 and no address has been set,
                     <code>qrosetta start</code> takes the first free port from 8081 to 8089, prints the
-                    address and keeps it until <code>qrosetta remove</code>. <code>--bind ADDRESS:PORT</code>,
+                    address and keeps it until <code>qrosetta remove</code>. When another Quantum Rosetta
+                    project on this computer publishes the port, <code>start</code> refuses and prints the
+                    command that stops that project: only one project runs at a time. <code>--bind ADDRESS:PORT</code>,
                     or <code>QROSETTA_HTTP_BIND</code> in <code>.env</code> or the environment, sets the
                     address, for example <code>0.0.0.0:8080</code> for every interface. Publish the page
                     beyond this computer only on a trusted network: on a local server any client may
@@ -146,11 +149,12 @@
                     A backend or compile-only service that the stack does not run, for example after
                     <code>--profile minimal</code>, is struck through in the Backends and Compile-only
                     services popovers. The first line of each popover says how many services run and
-                    gives the commands that add all of them; the row of a service that is not running
-                    gives the commands that add that one, for a backend when the pointer rests on its row
-                    (<code>qrosetta pull</code> for an installed
-                    release or <code>qrosetta build</code> for a checkout, then
-                    <code>qrosetta start -d</code> with its name).
+                    gives the commands that add the ones not running; the row of a service that is not
+                    running gives the commands that add that one, for a backend when the pointer rests on
+                    its row (<code>qrosetta build</code> when the stack runs images built on this
+                    computer, else <code>qrosetta pull</code>, then <code>qrosetta start -d</code> with its
+                    name). A service unavailable for another reason, such as one the release does not
+                    include or cuQuantum without a GPU, says so on its row.
                 </p>
 
                 <h3>Run a circuit</h3>
@@ -1952,7 +1956,8 @@
                     Each compiler image has a self-test (<code>python main.py --self-test</code>). It
                     compiles five probe circuits at every level, among them one with a <code>creg</code>,
                     and six for QMAP, Q-Synth and Quartz, which also compile a <code>c3x</code> followed by
-                    a qubit first used after it. It checks that each output has the input's unitary
+                    a qubit first used after it. Synthetiq compiles six Clifford+T circuits of its own,
+                    among them one whose angles pass 2π and one that is empty after translation. It checks that each output has the input's unitary
                     (process infidelity within the compiler's tolerance for BQSKit, PyZX and staq; operator
                     equality up to global phase for the others, read through QMAP's layout lines) and
                     declares as many qubits as the input.
@@ -2679,14 +2684,19 @@
                 <p>
                     An address chosen with <code>--bind</code>, <code>QROSETTA_HTTP_BIND</code> (in the
                     environment or the checkout's <code>.env</code>) or <code>[lifecycle] bind</code> is used
-                    as given, and <code>start</code> refuses it when another program holds it. When no address
+                    as given, and <code>start</code> refuses it when another program holds it; a
+                    <code>.env</code> value of 127.0.0.1:8080, the default, chooses nothing. When no address
                     was chosen, <code>start</code> uses the address it recorded for the project, else
-                    127.0.0.1:8080. When another program holds that port, it takes the first free port of
-                    127.0.0.1:8081 to 8089, says which (for example "Port 8080 is in use by another program;
-                    using 8081."), and records the address in the project's stack settings;
+                    127.0.0.1:8080. When another program holds that port, it takes the first other free port
+                    of 127.0.0.1:8080 to 8089, says which (for example "Port 8080 is in use by another
+                    program; using 8081."), and records the address in the project's stack settings;
                     <code>config show</code> lists it as chosen by <code>start</code>. <code>status</code>,
-                    <code>run</code> and the other commands find the local server there. <code>stop</code>
-                    keeps the address; <code>remove</code> forgets it. <code>start</code> never stops a
+                    <code>run</code> and the other commands find the local server there, or at the address
+                    the environment, the config file or the checkout's <code>.env</code> chose.
+                    <code>stop</code> keeps the recorded address; <code>remove</code>, and a
+                    <code>start</code> on a chosen address, forget it. When another Quantum Rosetta project
+                    on this computer publishes the port, <code>start</code> refuses whatever the address's
+                    source and prints the command that stops that project. <code>start</code> never stops a
                     program that holds a port.
                 </p>
                 <h3>JSON output</h3>
