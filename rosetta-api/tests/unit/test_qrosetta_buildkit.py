@@ -25,7 +25,7 @@ from qrosetta_cli import __version__  # noqa: E402
 from qrosetta_cli import manifest as mf  # noqa: E402
 from qrosetta_cli import mode as modes  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
-from qrosetta_cli.errors import Exit  # noqa: E402
+from qrosetta_cli.errors import CliError, Exit  # noqa: E402
 from qrosetta_cli.stack import buildkit, signatures  # noqa: E402
 from qrosetta_cli.stack import pull as pullmod  # noqa: E402
 from qrosetta_cli.stack import serve  # noqa: E402
@@ -422,6 +422,44 @@ def test_remove_images_keeps_the_record_of_a_kit_image_it_did_not_remove(env, mo
     fake.images["k-myqlm_runner"]["RepoTags"].append("localhost/someone-else:1")
     run(["remove", "--images"], env, fake)
     assert "k-myqlm_runner" in fake.images and "k-qiskit_runner" not in fake.images
+    assert buildkit.recorded(env, "qr") == {"myqlm": f"qr-myqlm_runner:{KIT_TAG}"}
+
+
+def test_a_refused_build_does_not_switch_a_pulled_service_back_to_its_local_build(env, monkeypatch):
+    import fcntl
+
+    ship()
+    fake, seen = engine_with_release(pulled=("nginx", "api")), []
+    monkeypatch.setattr(subprocess, "call", builder(fake, seen))
+    assert run(["build", "qiskit"], env, fake) == 0
+    assert run(["pull", "qiskit"], env, fake) == 0 and buildkit.recorded(env, "qr") == {}
+    lock_dir = Path(env["XDG_RUNTIME_DIR"]) / "qrosetta"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_dir / "engine.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        assert run(["build", "qiskit"], env, fake) == Exit.BUSY
+    finally:
+        os.close(fd)
+    assert len(seen) == 1 and buildkit.recorded(env, "qr") == {}
+
+
+def test_remove_that_fails_keeps_every_kit_record(env, monkeypatch):
+    from qrosetta_cli.stack import actions, project as st
+
+    ship()
+    fake, seen = engine_with_release(), []
+    monkeypatch.setattr(subprocess, "call", builder(fake, seen))
+    assert run(["build", "myqlm"], env, fake) == 0
+
+    def engine_gone(*args, **kwargs):
+        raise CliError("the engine stopped answering", Exit.ENGINE, "engine_error")
+
+    monkeypatch.setattr(actions, "remove_stack", engine_gone)
+    real_inspect = st._inspect_images
+    monkeypatch.setattr(st, "_inspect_images", lambda engine, refs: [] if any("buildkit" in r for r in refs)
+                        else real_inspect(engine, refs))
+    assert run(["remove", "--images"], env, fake) == Exit.ENGINE
     assert buildkit.recorded(env, "qr") == {"myqlm": f"qr-myqlm_runner:{KIT_TAG}"}
 
 

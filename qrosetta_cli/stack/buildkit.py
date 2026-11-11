@@ -250,14 +250,13 @@ def forget(env, project, sids):
     return gone
 
 
-def record_built(env, engine, kit_stack, manifest, services, baked):
-    """Record every one of `services` (compose names) whose build-kit image exists with this
-    project's labels and the kit's commit, also after a build that stopped part way; return
-    their ids."""
+def _valid_kit_images(engine, kit_stack, manifest, services, baked):
+    """{service id: (tag, image)} of `services` (compose names) whose build-kit image exists with
+    this project's labels and the kit's commit."""
     project = engine.project
     want = {kit_stack.services[s].id: kit_stack.image_for(s) for s in services}
     found = st.find_images(engine, list(want.values()))
-    ids = []
+    out = {}
     for sid, t in want.items():
         img = found.get(t)
         cs = ((manifest.get("services") or {}).get(sid) or {}).get("compose_service")
@@ -267,27 +266,39 @@ def record_built(env, engine, kit_stack, manifest, services, baked):
             and img.labels.get("org.qrosetta.image.project") == project
             and img.labels.get("org.qrosetta.service") == cs
         ):
-            ids.append(sid)
-    if ids:
-        record(env, project, {sid: want[sid] for sid in ids})
-    return ids
+            out[sid] = (t, img)
+    return out
 
 
-def _record_quietly(env, engine, kit_stack, manifest, services, baked):
+def record_built(env, engine, kit_stack, manifest, services, baked, before=None):
+    """Record the build-kit images of `services` (compose names) that exist with this project's
+    labels and the kit's commit; return their ids. With `before` ({service id: image id} taken
+    before a build that stopped part way), a service the release publishes is recorded only when
+    its image changed, so a stopped or refused build never switches a service the user pulled
+    back to an older local build; a service the release does not publish runs its kit image
+    whenever one exists, so it is always recorded."""
+    valid = _valid_kit_images(engine, kit_stack, manifest, services, baked)
+    if before is not None:
+        published = mf.published_refs(manifest)
+        valid = {sid: v for sid, v in valid.items() if sid not in published or before.get(sid) != v[1].id}
+    if valid:
+        record(env, engine.project, {sid: t for sid, (t, _) in valid.items()})
+    return list(valid)
+
+
+def _record_quietly(env, engine, kit_stack, manifest, services, baked, before):
     """record_built after a build that stopped; an engine failure here does not hide the cause."""
     try:
-        record_built(env, engine, kit_stack, manifest, services, baked)
+        record_built(env, engine, kit_stack, manifest, services, baked, before)
     except (CliError, OSError):
         pass
 
 
-def forget_removed(env, engine):
-    """Stop recording the build-kit images that no longer exist; the ids it forgot."""
-    current = recorded(env, engine.project)
-    if not current:
-        return []
-    found = st.find_images(engine, list(current.values()))
-    return forget(env, engine.project, [sid for sid, t in current.items() if t not in found])
+def forget_tags(env, project, removed):
+    """Stop recording the build-kit images whose tags are among `removed` (the tags `remove`
+    removed); the ids it forgot."""
+    gone = {st.normalise_tag(t) for t in removed}
+    return forget(env, project, [sid for sid, t in recorded(env, project).items() if st.normalise_tag(t) in gone])
 
 
 def local_images(engine, manifest, env):
@@ -404,6 +415,12 @@ def cmd_build(ctx):
     baked = baked_commit(meta)
     log_dir = os.path.join(cfgmod.qr_dir("cache", ctx.env), "build-logs")
     try:
+        before = {
+            sid: img.id for sid, (_, img) in _valid_kit_images(engine, kit_stack, manifest, requested, baked).items()
+        }
+    except CliError:
+        before = {}
+    try:
         built = run_build(
             ctx,
             engine,
@@ -422,10 +439,10 @@ def cmd_build(ctx):
             expected_sha=baked,
         )
     except BaseException:
-        _record_quietly(ctx.env, engine, kit_stack, manifest, requested, baked)
+        _record_quietly(ctx.env, engine, kit_stack, manifest, requested, baked, before)
         raise
     if built is None:
-        _record_quietly(ctx.env, engine, kit_stack, manifest, requested, baked)
+        _record_quietly(ctx.env, engine, kit_stack, manifest, requested, baked, before)
         return Result(int(Exit.SIGINT), None)
     ids = record_built(ctx.env, engine, kit_stack, manifest, requested, baked)
     refs = mf.published_refs(manifest)
