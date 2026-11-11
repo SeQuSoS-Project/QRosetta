@@ -680,6 +680,23 @@ def test_every_sha256sums_of_a_two_job_run_verifies(env, circuit, capsys):
         assert ".." not in open(os.path.join(inv, d, "SHA256SUMS")).read()
 
 
+def test_an_export_beside_other_jobs_keeps_the_job_folders_sums_valid(env, circuit, capsys):
+    server = Scripted(local=False)
+    assert run(["run", circuit, "--server", "https://q.example.org"], env, server) == 0
+    (inv,) = invocations(env)
+    job_dir = results.job_dirs(inv)[0]
+    server.config["exclusive"]["shared_running"] = 2
+    assert run(["export", "crate", "--result", job_dir, "--server", "https://q.example.org"], env, server) == 0
+    assert run(["export", "report", "--result", job_dir, "-o", os.path.join(job_dir, "copy.json"),
+                "--server", "https://q.example.org"], env, server) == 0
+    record = json.load(open(os.path.join(job_dir, "job.json")))
+    assert [e["kind"] for e in record["exports"]] == ["crate"] and record["concurrent_with_other_jobs"] is True
+    checked = _verify_every_sums_file(inv)
+    name = os.path.basename(job_dir)
+    assert {f"{name}/job.json", f"{name}/ro-crate.zip", f"{name}/copy.json"} <= set(checked)
+    assert not [n for n in os.listdir(job_dir) if n.startswith(".qrosetta-export-")]
+
+
 def test_every_sha256sums_of_a_selftest_verifies(env, capsys):
     server = _selftest_server({"statevector": _evaluation("statevector"), "measured": _evaluation("measured")})
     assert run(["selftest", "--json"], env, server) == 0

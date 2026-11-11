@@ -71,12 +71,26 @@ def _tmp_for(dest, job):
 
 
 def _note_concurrency(conn, job, kind):
+    """Record in job.json that the export ran beside other jobs' dispatches; whether it did."""
     if not job.dir or conn.dispatches_in_flight(conn.refresh_config()) == 0:
-        return
+        return False
     record = results.read_json(os.path.join(job.dir, "job.json")) or {}
     record["concurrent_with_other_jobs"] = True
     record.setdefault("exports", []).append({"kind": kind, "at": output.utc_now(), "concurrent_with_other_jobs": True})
     results.write_json(os.path.join(job.dir, "job.json"), record)
+    return True
+
+
+def _resum(job, changed, dest, partial=None):
+    """Refresh the job directory's SHA256SUMS after the export changed job.json (`changed`) or
+    wrote its file into the directory; a failed export's `partial` download is removed first."""
+    if partial and os.path.isfile(partial):
+        os.unlink(partial)
+    if not job.dir:
+        return
+    inside = dest not in (None, "-") and os.path.dirname(os.path.abspath(dest)) == os.path.abspath(job.dir)
+    if changed or inside:
+        results.write_sums(job.dir)
 
 
 def cmd_export_crate(ctx):
@@ -87,60 +101,66 @@ def cmd_export_crate(ctx):
     dest = _destination(ctx, job, "ro-crate.zip")
     tmp = _tmp_for(dest, job)
     source = "server_job"
+    noted = False
     try:
-        _note_concurrency(conn, job, "crate")
-        conn.download("POST", f"/jobs/{job.job_id}/export", tmp, body, confirm_large=confirm_large(ctx))
-    except CliError as exc:
-        if exc.code != Exit.NOT_FOUND:
-            raise
-        report = os.path.join(job.dir, "report.json") if job.dir else None
-        if not report or not os.path.isfile(report):
-            raise CliError(
-                f"Job {job.job_id[:8]} has expired on the server and no report.json is saved.",
-                Exit.NOT_FOUND,
-                "result_missing",
-                hint="qrosetta jobs",
-            ) from None
-        if not args.allow_supplied:
-            if not ctx.tty:
-                raise usage(
-                    "The job has expired on the server; a crate from the saved report.json records "
-                    "report_source client_supplied.",
-                    hint="qrosetta export crate --allow-supplied",
-                    reason="supplied_needs_consent",
+        try:
+            noted = _note_concurrency(conn, job, "crate")
+            conn.download("POST", f"/jobs/{job.job_id}/export", tmp, body, confirm_large=confirm_large(ctx))
+        except CliError as exc:
+            if exc.code != Exit.NOT_FOUND:
+                raise
+            report = os.path.join(job.dir, "report.json") if job.dir else None
+            if not report or not os.path.isfile(report):
+                raise CliError(
+                    f"Job {job.job_id[:8]} has expired on the server and no report.json is saved.",
+                    Exit.NOT_FOUND,
+                    "result_missing",
+                    hint="qrosetta jobs",
                 ) from None
-            answer = output.prompt(
-                "The job has expired; build a crate from the saved report.json (recorded as client_supplied)? [y/N] ",
-                stdin=ctx.stdin,
-            )
-            if not answer or answer.strip().lower() not in ("y", "yes"):
-                raise usage(
-                    "No crate built.", hint="qrosetta export crate --allow-supplied", reason="supplied_declined"
+            if not args.allow_supplied:
+                if not ctx.tty:
+                    raise usage(
+                        "The job has expired on the server; a crate from the saved report.json records "
+                        "report_source client_supplied.",
+                        hint="qrosetta export crate --allow-supplied",
+                        reason="supplied_needs_consent",
+                    ) from None
+                answer = output.prompt(
+                    "The job has expired; build a crate from the saved report.json (recorded as client_supplied)? [y/N] ",
+                    stdin=ctx.stdin,
+                )
+                if not answer or answer.strip().lower() not in ("y", "yes"):
+                    raise usage(
+                        "No crate built.", hint="qrosetta export crate --allow-supplied", reason="supplied_declined"
+                    ) from None
+            with open(report, "rb") as fh:
+                text = fh.read()
+            options = json.dumps(body, ensure_ascii=False).encode("utf-8")[1:-1]
+            payload = b'{"results":' + text + (b"," + options if options else b"") + b"}"
+            limit = conn.limit("max_request_bytes")
+            if limit and len(payload) > limit:
+                raise CliError(
+                    f"{report} is too large to send ({len(payload)} bytes; the server accepts {limit}).",
+                    Exit.REFUSED,
+                    "request_too_large",
+                    hint="make the crate while the job lives (`run --crate`) or save the run to history",
                 ) from None
-        with open(report, "rb") as fh:
-            text = fh.read()
-        options = json.dumps(body, ensure_ascii=False).encode("utf-8")[1:-1]
-        payload = b'{"results":' + text + (b"," + options if options else b"") + b"}"
-        limit = conn.limit("max_request_bytes")
-        if limit and len(payload) > limit:
-            raise CliError(
-                f"{report} is too large to send ({len(payload)} bytes; the server accepts {limit}).",
-                Exit.REFUSED,
-                "request_too_large",
-                hint="make the crate while the job lives (`run --crate`) or save the run to history",
-            ) from None
-        if not args.output and job.dir:
-            dest = os.path.join(job.dir, "ro-crate.client-supplied.zip")
-            tmp = _tmp_for(dest, job)
-        source = "client_supplied"
-        with open(tmp, "wb") as out:
-            resp = conn.transport.download(
-                "POST", "/export", out, body=payload, headers={"Content-Type": "application/json"}
-            )
-        if not 200 <= resp.status < 300:
-            os.unlink(tmp)
-            raise http_error("POST", "/export", resp) from None
+            if not args.output and job.dir:
+                dest = os.path.join(job.dir, "ro-crate.client-supplied.zip")
+                tmp = _tmp_for(dest, job)
+            source = "client_supplied"
+            with open(tmp, "wb") as out:
+                resp = conn.transport.download(
+                    "POST", "/export", out, body=payload, headers={"Content-Type": "application/json"}
+                )
+            if not 200 <= resp.status < 300:
+                os.unlink(tmp)
+                raise http_error("POST", "/export", resp) from None
+    except BaseException:
+        _resum(job, noted, None, tmp)
+        raise
     path = _deliver(ctx, tmp, dest)
+    _resum(job, noted, path)
     return Result(0, {"path": path, "job_id": job.job_id, "report_source": source})
 
 
@@ -154,6 +174,7 @@ def cmd_export_report(ctx):
             _to_stdout(saved)
             return Result(0, {"path": None, "job_id": job.job_id, "source": "saved report.json"})
         shutil.copyfile(saved, dest)
+        _resum(job, False, dest)
         output.progress(f"Copied the saved report to {dest}")
         output.result(dest)
         return Result(0, {"path": dest, "job_id": job.job_id, "source": "saved report.json"})
@@ -161,7 +182,13 @@ def cmd_export_report(ctx):
         output.result(dest)
         return Result(0, {"path": dest, "job_id": job.job_id, "source": "saved report.json"})
     tmp = _tmp_for(dest, job)
-    _note_concurrency(conn, job, "report")
-    conn.download("GET", f"/jobs/{job.job_id}/report", tmp, confirm_large=confirm_large(ctx))
+    noted = False
+    try:
+        noted = _note_concurrency(conn, job, "report")
+        conn.download("GET", f"/jobs/{job.job_id}/report", tmp, confirm_large=confirm_large(ctx))
+    except BaseException:
+        _resum(job, noted, None, tmp)
+        raise
     path = _deliver(ctx, tmp, dest)
+    _resum(job, noted, path)
     return Result(0, {"path": path, "job_id": job.job_id, "source": "server job"})

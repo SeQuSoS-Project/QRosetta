@@ -359,7 +359,9 @@ signed images on GHCR; and every result records the image, commit and host condi
 - In a `qrosetta run` or `selftest` result folder with two or more jobs, `sha256sum -c` reported
   `../plan.json` as changed in every job folder but the last, because each later job rewrote it.
   A job folder's `SHA256SUMS` now lists its own files only; `plan.json` (and `selftest.json`) are
-  in the result folder's own `SHA256SUMS`, written once every job is saved.
+  in the result folder's own `SHA256SUMS`, written once every job is saved. `qrosetta export`
+  rewrote `job.json` after the sums were written (when other jobs were running) and left the file
+  it wrote into the job folder unlisted; it now refreshes the folder's `SHA256SUMS`.
 - `qrosetta run --help` gave 6.0–6.7% for correct pairs flagged under Benjamini–Yekutieli with one
   backend wrong, a figure the 2026-11-02 Monte Carlo did not reproduce; it now gives that run's
   7.3–9.4% (3.2–4.3% also under Holm), as the manual does.
