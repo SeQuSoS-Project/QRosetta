@@ -68,10 +68,11 @@ def test_the_popover_line_counts_running_services_and_hides_when_all_run():
         ("stackSummaryParts", [_runners(3, 14), "kubernetes", "backends", "pull"]),
     ])
     text = lambda parts: "".join(p.get("code", p.get("text", "")) for p in parts)
-    assert text(line) == ("3 of 14 backends run in this stack. To add all: qrosetta pull --profile full, "
-                          "then qrosetta start -d --profile full.")
+    assert text(line) == ("3 of 14 backends run in this stack. To add the 11 that are not running: "
+                          "qrosetta pull --profile full, then qrosetta start -d --profile full.")
     assert [p["code"] for p in line if "code" in p] == ["qrosetta pull --profile full", "qrosetta start -d --profile full"]
-    assert text(compilers).startswith("2 of 8 compile-only services run in this stack. To add all: qrosetta build --profile full")
+    assert text(compilers).startswith("2 of 8 compile-only services run in this stack. To add the 6 that are not "
+                                      "running: qrosetta build --profile full")
     assert none_missing is None and k8s is None
 
 
@@ -84,7 +85,15 @@ def test_a_gpu_backend_without_a_gpu_is_counted_but_not_offered_commands():
         ("stackSummaryParts", [rows[1:] + [_row("qibo", False, "unreachable")], "local", "backends", "pull"]),
     ])
     assert hidden is None
-    assert with_one_missing[0]["text"].startswith("12 of 14 backends run in this stack.")
+    assert with_one_missing[0]["text"] == "12 of 14 backends run in this stack. To add the one that is not running: "
+
+
+@requires_node
+def test_services_withheld_from_the_release_are_not_promised_by_the_commands():
+    rows = [_row(f"r{i}") for i in range(3)] + [_row(f"m{i}", False, "unreachable") for i in range(9)]
+    rows += [_row("myqlm", False, "not included in this release"), _row("cuquantum", False, "not included in this release")]
+    (line,) = call_js(["stack_hints.js"], [("stackSummaryParts", [rows, "local", "backends", "pull"])])
+    assert line[0]["text"] == "3 of 14 backends run in this stack. To add the 9 that are not running: "
 
 
 @requires_node

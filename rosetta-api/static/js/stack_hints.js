@@ -27,13 +27,17 @@ export function serviceHintParts(id, verb) {
 }
 
 /** Parts of the line at the top of a popover (`noun`: "backends" or "compile-only services"),
- * or null when no enabled service is listed as not running. */
+ * or null when no enabled service is listed as not running. The commands add the services that
+ * are not running; a service unavailable for another reason (no GPU, not in the release) keeps
+ * its own note. */
 export function stackSummaryParts(rows, executionMode, noun, verb) {
     const enabled = (rows || []).filter(r => r && r.enabled !== false);
-    if (!enabled.some(r => notRunningLocally(r, executionMode))) return null;
+    const missing = enabled.filter(r => notRunningLocally(r, executionMode)).length;
+    if (!missing) return null;
     const running = enabled.filter(r => r.available !== false).length;
+    const which = missing === 1 ? 'the one that is not running' : `the ${missing} that are not running`;
     return [
-        { text: `${running} of ${enabled.length} ${noun} run in this stack. To add all: ` },
+        { text: `${running} of ${enabled.length} ${noun} run in this stack. To add ${which}: ` },
         { code: `qrosetta ${verb} --profile full` }, { text: ', then ' },
         { code: 'qrosetta start -d --profile full' }, { text: '.' },
     ];
