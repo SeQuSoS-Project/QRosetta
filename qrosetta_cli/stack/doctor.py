@@ -942,11 +942,15 @@ def run(ctx, host=None):
     check_buildkit(rep, _mode_name(ctx))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
-    if config is not None:
+    port_row = next((c for c in rep.checks if c.id == "port"), None)
+    mine = config is not None and port_row is not None and port_row.status == "PASS"
+    if mine:
         check_live(rep, config, transport, ctx.env, host.running_services(ctx), not_included_ids(ctx))
+    elif config is not None:
+        rep.add("server", "INFO", f"the Quantum Rosetta at {server.url} is not this project's; live checks skipped")
     else:
         rep.add("server", "INFO", f"no Quantum Rosetta answers at {server.url}; live checks skipped")
-    rep.next_command = next_command(ctx, host, config is not None)
+    rep.next_command = next_command(ctx, host, mine)
     return rep
 
 

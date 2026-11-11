@@ -147,12 +147,17 @@ def test_doctor_rows(env, tmp_path):
         "INFO", "127.0.0.1:8080 is used by another Quantum Rosetta (not this project); "
                 "`qrosetta start` will use 127.0.0.1:8081")
     assert rep.port_holder == "quantum_rosetta"
+    server_row = next(c for c in rep.checks if c.id == "server")
+    assert server_row.message == "the Quantum Rosetta at http://localhost:8080 is not this project's; live checks skipped"
+    assert not [c for c in rep.checks if c.id in ("ready", "backends", "compilers")]
+    assert rep.next_command != "qrosetta selftest"
     cfg = _config(tmp_path, '[lifecycle]\nbind = "127.0.0.1:8080"\n')
     row, _ = _port_row(env, EngineHost(env, FakeEngine(), taken={8080}), cfg, server=FakeServer())
     assert (row.status, row.message) == ("FAIL", "127.0.0.1:8080 is used by another Quantum Rosetta (not this project)")
-    row, _ = _port_row(env, EngineHost(env, FakeEngine(), taken={8080}, published=["127.0.0.1:8080"]),
-                       server=FakeServer())
+    row, rep = _port_row(env, EngineHost(env, FakeEngine(), taken={8080}, published=["127.0.0.1:8080"]),
+                         server=FakeServer())
     assert row.status == "PASS" and "running Quantum Rosetta" in row.message
+    assert rep.next_command == "qrosetta selftest"
 
 
 def test_the_engine_reads_are_read_only(env):
