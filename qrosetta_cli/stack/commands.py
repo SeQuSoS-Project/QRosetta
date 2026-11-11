@@ -260,20 +260,22 @@ def cmd_remove(ctx):
             ctx, url, "remove", "--force", args.force, "removing now ends them, and their runs report a lost connection"
         )
     everything = bool(getattr(args, "all", False))
-    with guard.engine_lock(ctx.env, "remove"), hostload.notice(ctx, url, "remove", expect_server_gone=True):
-        removed = actions.remove_stack(
-            engine,
-            stack,
-            images=args.images,
-            data=args.data,
-            confirm=args.confirm,
-            tty=ctx.tty,
-            ask=lambda q: output.prompt(q, stdin=ctx.stdin),
-            everything=everything,
-        )
+    try:
+        with guard.engine_lock(ctx.env, "remove"), hostload.notice(ctx, url, "remove", expect_server_gone=True):
+            removed = actions.remove_stack(
+                engine,
+                stack,
+                images=args.images,
+                data=args.data,
+                confirm=args.confirm,
+                tty=ctx.tty,
+                ask=lambda q: output.prompt(q, stdin=ctx.stdin),
+                everything=everything,
+            )
+    finally:
+        if args.images or everything:
+            buildkit.forget_removed(ctx.env, engine)
     localstack.forget_bind(ctx.env, stack.name)
-    if args.images or everything:
-        buildkit.forget(ctx.env, stack.name, list(buildkit.recorded(ctx.env, stack.name)))
     return Result(
         0, {"images": args.images or everything, "data": args.data or everything, "all": everything, "removed": removed}
     )

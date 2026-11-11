@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 import tarfile
@@ -336,6 +337,44 @@ def test_the_kit_is_checked_and_its_unpacked_copy_reused_until_a_file_changes(en
     assert len(seen) == 3
 
 
+def test_an_unpacked_copy_without_its_marker_is_replaced_and_no_staging_directory_is_left(env, tmp_path):
+    ship()
+    meta = buildkit.load()
+    target = Path(buildkit.unpack(env, meta))
+    (target / buildkit.MARKER).unlink()
+    (target / "leftover").write_text("x")
+    assert Path(buildkit.unpack(env, meta)) == target
+    assert (target / buildkit.MARKER).is_file() and not (target / "leftover").exists()
+    assert sorted(p.name for p in target.parent.iterdir()) == [target.name, target.name + ".lock"]
+
+
+def test_a_failed_unpack_leaves_the_cache_as_it_was(env, monkeypatch):
+    ship()
+    meta = buildkit.load()
+
+    def broken(tar):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(buildkit, "_members", broken)
+    with pytest.raises(OSError):
+        buildkit.unpack(env, meta)
+    base = Path(env["XDG_CACHE_HOME"]) / "qrosetta" / "buildkit"
+    assert [p.name for p in base.iterdir() if ".unpacking-" in p.name] == []
+
+
+def test_unpacked_directories_are_readable_by_every_user_whatever_the_umask(env):
+    ship()
+    old = os.umask(0o077)
+    try:
+        target = Path(buildkit.unpack(env, buildkit.load()))
+    finally:
+        os.umask(old)
+    assert (target.stat().st_mode & 0o777) == 0o755
+    assert ((target / "scripts").stat().st_mode & 0o777) == 0o755
+    assert ((target / "scripts" / "safe_boot.sh").stat().st_mode & 0o777) == 0o755
+    assert ((target / "docker-compose.yml").stat().st_mode & 0o777) == 0o644
+
+
 def test_a_build_that_did_not_bake_the_kit_commit_exits_16(env, monkeypatch, capsys):
     ship()
     fake, seen = engine_with_release(), []
@@ -343,6 +382,47 @@ def test_a_build_that_did_not_bake_the_kit_commit_exits_16(env, monkeypatch, cap
     assert run(["build", "myqlm"], env, fake) == Exit.ENGINE
     assert "without the commit " + COMMIT + "+buildkit: myqlm" in capsys.readouterr().err
     assert not (Path(env["XDG_STATE_HOME"]) / "qrosetta" / "stack-settings.json").exists()
+
+
+def test_an_interrupted_build_records_the_images_it_finished(env, monkeypatch):
+    ship(published=False)
+    fake, seen = engine_with_release(pulled=()), []
+    finish = builder(fake, seen)
+
+    def interrupted(cmd, env, cwd, **kwargs):
+        finish(cmd, dict(env, QR_BUILD_SERVICES="myqlm_runner"), cwd)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "call", interrupted)
+    assert run(["build", "myqlm", "qiskit"], env, fake) == Exit.SIGINT
+    assert buildkit.recorded(env, "qr") == {"myqlm": f"qr-myqlm_runner:{KIT_TAG}"}
+
+
+def test_a_build_that_fails_for_one_service_records_the_others(env, monkeypatch, capsys):
+    ship()
+    fake, seen = engine_with_release(), []
+    good, bad = builder(fake, seen), builder(fake, seen, sha="unknown")
+
+    def mixed(cmd, env, cwd, **kwargs):
+        good(cmd, dict(env, QR_BUILD_SERVICES="myqlm_runner"), cwd)
+        bad(cmd, dict(env, QR_BUILD_SERVICES="qiskit_runner"), cwd)
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", mixed)
+    assert run(["build", "myqlm", "qiskit"], env, fake) == Exit.ENGINE
+    assert "without the commit " + COMMIT + "+buildkit: qiskit" in capsys.readouterr().err
+    assert buildkit.recorded(env, "qr") == {"myqlm": f"qr-myqlm_runner:{KIT_TAG}"}
+
+
+def test_remove_images_keeps_the_record_of_a_kit_image_it_did_not_remove(env, monkeypatch, capsys):
+    ship()
+    fake, seen = engine_with_release(), []
+    monkeypatch.setattr(subprocess, "call", builder(fake, seen))
+    assert run(["build", "myqlm", "qiskit"], env, fake) == 0
+    fake.images["k-myqlm_runner"]["RepoTags"].append("localhost/someone-else:1")
+    run(["remove", "--images"], env, fake)
+    assert "k-myqlm_runner" in fake.images and "k-qiskit_runner" not in fake.images
+    assert buildkit.recorded(env, "qr") == {"myqlm": f"qr-myqlm_runner:{KIT_TAG}"}
 
 
 def _compose(env):

@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tarfile
+from contextlib import contextmanager
 
 from qrosetta_cli import __version__, config as cfgmod, localstack, manifest as mf
 from qrosetta_cli.context import Result
@@ -137,9 +138,54 @@ def _unpacked_ok(directory, meta):
         return False
 
 
+@contextmanager
+def _unpack_lock(path):
+    """An exclusive lock on `path`, waited for, so two builds never unpack into one directory at once."""
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _extract(archive, staging, digest, meta):
+    """Write the archive's files into `staging` (directories 0755, files 0644 or 0755, whatever the
+    umask) and the marker recording each file's sha256."""
+    files = {}
+    os.makedirs(staging)
+    with tarfile.open(archive, "r:gz") as tar:
+        for m in _members(tar):
+            parts = m.name.split("/")
+            for depth in range(1, len(parts)):
+                d = os.path.join(staging, *parts[:depth])
+                if not os.path.isdir(d):
+                    os.mkdir(d)
+                    os.chmod(d, 0o755)  # noqa: S103 (the build copies modes into images; nginx runs as uid 101)
+            dest = os.path.join(staging, *parts)
+            member = tar.extractfile(m)
+            data = member.read() if member is not None else b""
+            with open(dest, "wb") as fh:
+                fh.write(data)
+            os.chmod(dest, 0o755 if m.mode & 0o111 else 0o644)
+            files[m.name] = hashlib.sha256(data).hexdigest()
+    os.chmod(staging, 0o755)  # noqa: S103
+    with open(os.path.join(staging, MARKER), "w", encoding="utf-8") as fh:
+        json.dump({"sha256": digest, "commit": meta.get("commit"), "files": files}, fh, indent=1, sort_keys=True)
+
+
 def unpack(env, meta):
     """The directory holding the unpacked kit, reused when it still matches; the archive's sha256
-    is checked against the metadata first."""
+    is checked against the metadata first. A directory that does not match, marker or not, is
+    replaced."""
     archive, _ = paths()
     digest = _sha256(archive)
     if digest != meta["sha256"]:
@@ -154,24 +200,25 @@ def unpack(env, meta):
     if _unpacked_ok(target, meta):
         return target
     os.makedirs(base, mode=0o700, exist_ok=True)
-    staging = f"{target}.unpacking-{os.getpid()}"
-    shutil.rmtree(staging, ignore_errors=True)
-    files = {}
-    with tarfile.open(archive, "r:gz") as tar:
-        for m in _members(tar):
-            dest = os.path.join(staging, *m.name.split("/"))
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-            member = tar.extractfile(m)
-            data = member.read() if member is not None else b""
-            with open(dest, "wb") as fh:
-                fh.write(data)
-            os.chmod(dest, 0o755 if m.mode & 0o111 else 0o644)
-            files[m.name] = hashlib.sha256(data).hexdigest()
-    with open(os.path.join(staging, MARKER), "w", encoding="utf-8") as fh:
-        json.dump({"sha256": digest, "commit": meta.get("commit"), "files": files}, fh, indent=1, sort_keys=True)
-    if os.path.isdir(target) and os.path.isfile(os.path.join(target, MARKER)):
-        shutil.rmtree(target)
-    os.replace(staging, target)
+    with _unpack_lock(f"{target}.lock"):
+        if _unpacked_ok(target, meta):
+            return target
+        staging = f"{target}.unpacking-{os.getpid()}"
+        shutil.rmtree(staging, ignore_errors=True)
+        try:
+            _extract(archive, staging, digest, meta)
+            if os.path.lexists(target):
+                stale = f"{target}.stale-{os.getpid()}"
+                shutil.rmtree(stale, ignore_errors=True)
+                os.replace(target, stale)
+                if os.path.isdir(stale) and not os.path.islink(stale):
+                    shutil.rmtree(stale, ignore_errors=True)
+                else:
+                    os.unlink(stale)
+            os.replace(staging, target)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
     return target
 
 
@@ -201,6 +248,46 @@ def forget(env, project, sids):
             values[SETTING] = rest
         localstack.write_stack_settings(env, project, values)
     return gone
+
+
+def record_built(env, engine, kit_stack, manifest, services, baked):
+    """Record every one of `services` (compose names) whose build-kit image exists with this
+    project's labels and the kit's commit, also after a build that stopped part way; return
+    their ids."""
+    project = engine.project
+    want = {kit_stack.services[s].id: kit_stack.image_for(s) for s in services}
+    found = st.find_images(engine, list(want.values()))
+    ids = []
+    for sid, t in want.items():
+        img = found.get(t)
+        cs = ((manifest.get("services") or {}).get(sid) or {}).get("compose_service")
+        if (
+            img is not None
+            and img.git_sha == baked
+            and img.labels.get("org.qrosetta.image.project") == project
+            and img.labels.get("org.qrosetta.service") == cs
+        ):
+            ids.append(sid)
+    if ids:
+        record(env, project, {sid: want[sid] for sid in ids})
+    return ids
+
+
+def _record_quietly(env, engine, kit_stack, manifest, services, baked):
+    """record_built after a build that stopped; an engine failure here does not hide the cause."""
+    try:
+        record_built(env, engine, kit_stack, manifest, services, baked)
+    except (CliError, OSError):
+        pass
+
+
+def forget_removed(env, engine):
+    """Stop recording the build-kit images that no longer exist; the ids it forgot."""
+    current = recorded(env, engine.project)
+    if not current:
+        return []
+    found = st.find_images(engine, list(current.values()))
+    return forget(env, engine.project, [sid for sid, t in current.items() if t not in found])
 
 
 def local_images(engine, manifest, env):
@@ -316,27 +403,31 @@ def cmd_build(ctx):
     engine.check_compose()
     baked = baked_commit(meta)
     log_dir = os.path.join(cfgmod.qr_dir("cache", ctx.env), "build-logs")
-    built = run_build(
-        ctx,
-        engine,
-        kit_stack,
-        os.path.join(directory, "scripts", "safe_boot.sh"),
-        requested,
-        requested,
-        {
-            "QR_GIT_SHA": baked,
-            "QR_IMAGE_TAG": f"{__version__}-buildkit",
-            "QR_PYTHON": sys.executable or "python3",
-            "QR_BUILD_LOG_DIR": log_dir,
-            "QROSETTA_IMAGE_SOURCE": "built_locally",
-            "QROSETTA_RELEASE": __version__,
-        },
-        expected_sha=baked,
-    )
+    try:
+        built = run_build(
+            ctx,
+            engine,
+            kit_stack,
+            os.path.join(directory, "scripts", "safe_boot.sh"),
+            requested,
+            requested,
+            {
+                "QR_GIT_SHA": baked,
+                "QR_IMAGE_TAG": f"{__version__}-buildkit",
+                "QR_PYTHON": sys.executable or "python3",
+                "QR_BUILD_LOG_DIR": log_dir,
+                "QROSETTA_IMAGE_SOURCE": "built_locally",
+                "QROSETTA_RELEASE": __version__,
+            },
+            expected_sha=baked,
+        )
+    except BaseException:
+        _record_quietly(ctx.env, engine, kit_stack, manifest, requested, baked)
+        raise
     if built is None:
+        _record_quietly(ctx.env, engine, kit_stack, manifest, requested, baked)
         return Result(int(Exit.SIGINT), None)
-    ids = [kit_stack.services[s].id for s in built]
-    record(ctx.env, project, {sid: tag(project, manifest["services"][sid]["compose_service"]) for sid in ids})
+    ids = record_built(ctx.env, engine, kit_stack, manifest, requested, baked)
     refs = mf.published_refs(manifest)
     replaced = [s for s in ids if s in refs]
     result(f"Built {len(ids)} image{'' if len(ids) == 1 else 's'} from the build kit: {', '.join(ids)}.")
