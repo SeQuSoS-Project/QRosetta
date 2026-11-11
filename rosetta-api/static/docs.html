@@ -2922,11 +2922,14 @@
                 <p>
                     Not by itself. The distances stayed above the descriptive thresholds after every
                     registered transform. Check the pair's <code>measured_assessment</code>: if it is
-                    <code>consistent_within_shot_noise</code>, sampling alone produces such a difference at
-                    this shot count; if it is <code>inconclusive_low_shots</code>, rerun with more shots when
-                    <code>resolvable_by_more_shots</code> is true. Only <code>distinguishable</code>
-                    indicates a real difference, whose cause can be an unregistered convention, a resource
-                    limit, or a defect in a backend or its adapter.
+                    <code>consistent_within_shot_noise</code>, the test of the whole distribution found no
+                    difference beyond what sampling produces at this shot count; if it is
+                    <code>inconclusive_low_shots</code>, rerun with more shots when
+                    <code>resolvable_by_more_shots</code> is true. A real difference is indicated by
+                    <code>distinguishable</code>, or by a <code>marginal_assessment</code> of
+                    <code>marginal_distinguishable</code> (a single classical bit differs), whatever the
+                    <code>measured_assessment</code>; its cause can be an unregistered convention, a
+                    resource limit, or a defect in a backend or its adapter.
                 </p>
                 <h3>Does QRosetta modify a backend's output?</h3>
                 <p>
