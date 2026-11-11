@@ -140,7 +140,15 @@ def cmd_start(ctx):
     if not cpu_quota:
         output.warn(quota.describe_off(setting.get("since")), "cpu_quota_off")
     bind = _bind(chosen)
-    localstack.record_bind(ctx.env, stack.name, None if chosen.chosen else chosen.address)
+    if not chosen.chosen:
+        localstack.record_bind(ctx.env, stack.name, chosen.address)
+
+    def published():
+        """Once compose has published the stack on a chosen address, a recorded fallback port no
+        longer names it; a refused or failed start keeps the record of where the stack runs."""
+        if chosen.chosen:
+            localstack.forget_bind(ctx.env, stack.name)
+
     jobs = set_up_env(ctx, engine, bind)
     found = own.scan(engine, stack)
     serve.check_startable(engine, found)
@@ -180,6 +188,7 @@ def cmd_start(ctx):
                     serve.up(engine, fresh_start, adding, chosen.address, stack=stack)
             elif not stale:
                 progress("Every requested service is already running.")
+            published()
             ready = serve.wait_ready(ctx, engine, stack, services)
         url, address = serve.announce_published(engine, stack)
         progress(jobstore.line(jobs))
@@ -217,6 +226,7 @@ def cmd_start(ctx):
         stale=stale,
         jobs_line=jobstore.line(jobs),
         removed=lambda: localstack.forget_bind(ctx.env, stack.name),
+        started=published,
     )
     return Result(server.run(), None)
 
@@ -259,22 +269,20 @@ def cmd_remove(ctx):
             ctx, url, "remove", "--force", args.force, "removing now ends them, and their runs report a lost connection"
         )
     everything = bool(getattr(args, "all", False))
-    try:
-        with guard.engine_lock(ctx.env, "remove"), hostload.notice(ctx, url, "remove", expect_server_gone=True):
-            removed = actions.remove_stack(
-                engine,
-                stack,
-                images=args.images,
-                data=args.data,
-                confirm=args.confirm,
-                tty=ctx.tty,
-                ask=lambda q: output.prompt(q, stdin=ctx.stdin),
-                everything=everything,
-            )
-    finally:
-        if args.images or everything:
-            buildkit.forget_removed(ctx.env, engine)
+    with guard.engine_lock(ctx.env, "remove"), hostload.notice(ctx, url, "remove", expect_server_gone=True):
+        removed = actions.remove_stack(
+            engine,
+            stack,
+            images=args.images,
+            data=args.data,
+            confirm=args.confirm,
+            tty=ctx.tty,
+            ask=lambda q: output.prompt(q, stdin=ctx.stdin),
+            everything=everything,
+        )
     localstack.forget_bind(ctx.env, stack.name)
+    if args.images or everything:
+        buildkit.forget_tags(ctx.env, stack.name, removed.get("images") or [])
     return Result(
         0, {"images": args.images or everything, "data": args.data or everything, "all": everything, "removed": removed}
     )

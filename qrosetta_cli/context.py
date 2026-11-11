@@ -51,7 +51,7 @@ class Context:
         from qrosetta_cli.client import servers
 
         if self._server is None:
-            self._server = servers.select(self.opt("server"), self.env, self.cfg, self.checkout_dir())
+            self._server = servers.select(self.opt("server"), self.env, self.cfg, self.checkout_dir)
             self.server_block = self._server.block()
         return self._server
 

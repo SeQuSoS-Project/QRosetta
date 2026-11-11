@@ -571,12 +571,14 @@ class Server:
         stale=(),
         jobs_line=None,
         removed=None,
+        started=None,
     ):
         self.engine, self.stack, self.action = engine, stack, action
         self.services, self.adding, self.bind = services, adding, bind
         self.stale = list(stale)
         self.jobs_line = jobs_line
         self.removed = removed or (lambda: None)
+        self.started = started or (lambda: None)
         self.ask = ask or (lambda q: output.prompt(q, timeout=ASK_TIMEOUT_SEC))
         self.tty = tty
         self.lock = lock or (lambda what: _null_lock())
@@ -642,6 +644,7 @@ class Server:
             ids = [self.stack.services[s].id for s in self.services]
             with self.lock("start"), self.notice("start", ids) if self.adding else _null_lock():
                 self._compose_up(self.services, False)
+        self.started()
         progress("")
         url, address = announce_published(self.engine, self.stack)
         if self.jobs_line:

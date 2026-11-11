@@ -177,6 +177,17 @@ def test_publishing_on_a_chosen_address_forgets_the_recorded_one(project, env):
     assert _recorded(env) is None
 
 
+def test_a_refused_start_on_a_chosen_address_keeps_the_recorded_one(project, env):
+    localstack.record_bind(env, "qr", "127.0.0.1:8081")
+    fake = FakeEngine().standard()
+    busy = FakeServer(gate={"exclusive_running": False, "shared_running": 1}, fresh=True)
+    code = main(["start", "-d", "--bind", "127.0.0.1:9000"], checkout=str(project), env=env, tty=False,
+                engine_factory=lambda d: Engine(fake.engine, d, run=fake, popen=fake.popen, env=env),
+                transport_factory=busy, host_factory=lambda e: Ports(env, taken={8080}))
+    assert code == Exit.BUSY and not _up_env(fake)
+    assert _recorded(env) == "127.0.0.1:8081"
+
+
 def test_all_ten_ports_taken_is_refused_with_the_numbered_fix(project, env, capsys):
     fake = _stopped()
     assert _cli(fake, project, env, ["start", "-d"], Ports(env, taken=set(range(8080, 8090)))) == Exit.ENGINE
@@ -288,6 +299,25 @@ def test_commands_in_a_checkout_find_the_address_its_dotenv_sets(project, env):
     )
     (project / ".env").write_text("QROSETTA_HTTP_BIND=127.0.0.1:8080\n")
     assert servers.select(None, env, none, str(project)).url == "http://localhost:8081"
+
+
+def test_the_checkout_is_looked_up_only_for_the_local_server_without_a_url(project, env, capsys):
+    none = cfgmod.Config("/none", False)
+    asked = []
+
+    def checkout():
+        asked.append(True)
+        return str(project)
+
+    (project / ".env").write_text("QROSETTA_HTTP_BIND=127.0.0.1:9000\n")
+    assert servers.resolve("https://q.example.org", "--server", none, env, checkout).url == "https://q.example.org"
+    assert asked == []
+    assert servers.resolve("local", "job index", none, env, checkout).url == "http://localhost:9000"
+    assert asked == [True]
+    home = dict(env, QROSETTA_HOME=str(project))
+    ctx = Context(args=type("A", (), {"server": "https://q.example.org", "project_dir": None})(), env=home, cfg=none)
+    assert ctx.server().url == "https://q.example.org"
+    assert "QROSETTA_HOME" not in capsys.readouterr().err
 
 
 def test_config_show_names_where_the_address_comes_from(env, capsys):

@@ -44,7 +44,7 @@ def cmd_jobs(ctx):
             if row["server"] not in conns:
                 try:
                     conns[row["server"]] = Conn(
-                        ctx, server=servers.resolve(row["server"], "job index", ctx.cfg, ctx.env)
+                        ctx, server=servers.resolve(row["server"], "job index", ctx.cfg, ctx.env, ctx.checkout_dir)
                     )
                 except CliError as exc:
                     conns[row["server"]] = exc
