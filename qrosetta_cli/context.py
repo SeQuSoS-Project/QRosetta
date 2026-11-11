@@ -33,6 +33,7 @@ class Context:
     local_stack: Any = None
     server_block: dict | None = None
     _server: Any = field(default=None, repr=False)
+    _checkout_dir: Any = field(default=False, repr=False)
 
     def __post_init__(self):
         if self.stdin is None:
@@ -50,9 +51,22 @@ class Context:
         from qrosetta_cli.client import servers
 
         if self._server is None:
-            self._server = servers.select(self.opt("server"), self.env, self.cfg)
+            self._server = servers.select(self.opt("server"), self.env, self.cfg, self.checkout_dir())
             self.server_block = self._server.block()
         return self._server
+
+    def checkout_dir(self):
+        """The checkout this command runs in, or None (installed mode, or no project found)."""
+        from qrosetta_cli import mode as modes
+        from qrosetta_cli.errors import CliError
+
+        if self._checkout_dir is False:
+            try:
+                mode = modes.detect(self.opt("project_dir"), self.env, self.checkout)
+            except CliError:
+                mode = None
+            self._checkout_dir = mode.project_dir if mode is not None and mode.name == "checkout" else None
+        return self._checkout_dir
 
     def transport(self, with_token=False, timeout=None, server=None):
         from qrosetta_cli.client import servers

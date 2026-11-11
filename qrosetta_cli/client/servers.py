@@ -48,17 +48,18 @@ class Server:
         }
 
 
-def select(flag, env, cfg):
+def select(flag, env, cfg, project_dir=None):
     """--server (a URL when it contains ://, else a [servers.NAME] table), else QROSETTA_SERVER,
-    else default_server, else the local stack."""
+    else default_server, else the local stack (with the checkout in `project_dir`, whose .env
+    can set its address)."""
     for value, source in (
         (flag, "--server"),
         (env.get("QROSETTA_SERVER"), "env QROSETTA_SERVER"),
         (cfg.get("default_server"), "config default_server"),
     ):
         if value:
-            return resolve(value, source, cfg, env)
-    return resolve(LOCAL, "default", cfg, env)
+            return resolve(value, source, cfg, env, project_dir)
+    return resolve(LOCAL, "default", cfg, env, project_dir)
 
 
 def check_url(url, source):
@@ -73,7 +74,7 @@ def check_url(url, source):
     return url
 
 
-def resolve(value, source, cfg, env=None):
+def resolve(value, source, cfg, env=None, project_dir=None):
     """A server by URL or [servers.NAME] table; the local stack without a url is found at the
     address it is published on (`localstack.local_bind`)."""
     if "://" in value:
@@ -88,7 +89,8 @@ def resolve(value, source, cfg, env=None):
             reason="unknown_server",
         )
     table = table or {}
-    url = table.get("url") or bind_url(localstack.local_bind(os.environ if env is None else env, cfg)[0])
+    env = os.environ if env is None else env
+    url = table.get("url") or bind_url(localstack.local_bind(env, cfg, project_dir=project_dir)[0])
     url = check_url(url.rstrip("/"), f"[servers.{value}] url")
     return Server(value, url, source, bool(table.get("allow_insecure_http")))
 

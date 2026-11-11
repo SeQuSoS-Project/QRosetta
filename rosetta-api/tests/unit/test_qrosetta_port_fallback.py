@@ -134,20 +134,46 @@ def test_this_stacks_own_web_server_on_8080_is_not_another_program(project, env,
 def test_a_chosen_address_that_is_taken_is_refused_before_compose(project, env, tmp_path, capsys, how):
     argv = ["start", "-d"]
     if how == "flag":
-        argv += ["--bind", "127.0.0.1:8080"]
+        argv += ["--bind", "127.0.0.1:8085"]
     elif how == "env":
-        env = dict(env, QROSETTA_HTTP_BIND="127.0.0.1:8080")
+        env = dict(env, QROSETTA_HTTP_BIND="127.0.0.1:8085")
     elif how == "config":
-        (tmp_path / "config.toml").write_text('[lifecycle]\nbind = "127.0.0.1:8080"\n')
+        (tmp_path / "config.toml").write_text('[lifecycle]\nbind = "127.0.0.1:8085"\n')
         env = dict(env, QROSETTA_CONFIG=str(tmp_path / "config.toml"))
     else:
-        (project / ".env").write_text('SECRET_KEY=x\nQROSETTA_HTTP_BIND="127.0.0.1:8080"\n')
+        (project / ".env").write_text('SECRET_KEY=x\nQROSETTA_HTTP_BIND="127.0.0.1:8085"  # chosen\n')
     fake = _stopped()
-    host = Ports(env, taken={8080})
+    host = Ports(env, taken={8085})
     assert _cli(fake, project, env, argv, host) == Exit.ENGINE
     err = capsys.readouterr().err
-    assert "FAIL  port           127.0.0.1:8080 is in use" in err.splitlines()
-    assert "using 8081" not in err and fake.calls == [] and host.probed == [8080]
+    assert "FAIL  port           127.0.0.1:8085 is in use" in err.splitlines()
+    assert "using 8086" not in err and fake.calls == [] and host.probed == [8085]
+    assert _recorded(env) is None
+
+
+@pytest.mark.parametrize("line", ['QROSETTA_HTTP_BIND="127.0.0.1:8080"', "QROSETTA_HTTP_BIND=127.0.0.1:8080 # default"])
+def test_a_dotenv_holding_the_default_address_chooses_nothing(project, env, capsys, line):
+    (project / ".env").write_text(f"SECRET_KEY=x\n{line}\n")
+    fake = _stopped()
+    assert _cli(fake, project, env, ["start", "-d"], Ports(env, taken={8080}), FakeServer(fresh=True)) == 0
+    assert "Port 8080 is in use by another program; using 8081." in capsys.readouterr().err
+    assert {e["QROSETTA_HTTP_BIND"] for e in _up_env(fake)} == {"127.0.0.1:8081"}
+    assert _recorded(env) == "127.0.0.1:8081"
+
+
+def test_a_dotenv_address_with_a_comment_is_read_as_compose_reads_it(project, env, capsys):
+    (project / ".env").write_text("QROSETTA_HTTP_BIND=127.0.0.1:9000  # moved off 8080\n")
+    fake = _stopped()
+    host = Ports(env, taken={8080})
+    assert _cli(fake, project, env, ["start", "-d"], host, FakeServer(fresh=True)) == 0
+    assert host.probed[:1] == [9000]
+    assert all("QROSETTA_HTTP_BIND" not in e for e in _up_env(fake))
+
+
+def test_publishing_on_a_chosen_address_forgets_the_recorded_one(project, env):
+    localstack.record_bind(env, "qr", "127.0.0.1:8081")
+    fake = _stopped()
+    assert _cli(fake, project, env, ["start", "-d", "--bind", "127.0.0.1:9000"], Ports(env), FakeServer(fresh=True)) == 0
     assert _recorded(env) is None
 
 
@@ -251,6 +277,19 @@ def test_commands_find_the_local_server_at_the_recorded_address_unless_one_is_co
     assert servers.select(None, env, none).url == "http://localhost:8080"
 
 
+def test_commands_in_a_checkout_find_the_address_its_dotenv_sets(project, env):
+    none = cfgmod.Config("/none", False)
+    localstack.record_bind(env, "qr", "127.0.0.1:8081")
+    (project / ".env").write_text("QROSETTA_HTTP_BIND='127.0.0.1:9000' # x\n")
+    ctx = Context(args=type("A", (), {"server": None, "project_dir": None})(), env=env, cfg=none, checkout=str(project))
+    assert ctx.server().url == "http://localhost:9000"
+    assert servers.select(None, dict(env, QROSETTA_HTTP_BIND="127.0.0.1:9100"), none, str(project)).url == (
+        "http://localhost:9100"
+    )
+    (project / ".env").write_text("QROSETTA_HTTP_BIND=127.0.0.1:8080\n")
+    assert servers.select(None, env, none, str(project)).url == "http://localhost:8081"
+
+
 def test_config_show_names_where_the_address_comes_from(env, capsys):
     localstack.record_bind(env, "qr", "127.0.0.1:8081")
     assert main(["config", "show", "--json"], env=env) == 0
@@ -285,6 +324,23 @@ def test_doctor_fails_on_a_chosen_address_or_a_full_range(env, tmp_path):
     row, _ = _port_row(env, Ports(env, taken=set(range(8080, 8090))))
     assert row.status == "FAIL" and row.message == "127.0.0.1:8080 to 127.0.0.1:8089 are all in use"
     assert "qrosetta start -d --bind 127.0.0.1:8090" in row.fix
+
+
+def test_doctors_fix_changes_the_setting_that_chose_the_address(env, project):
+    row, _ = _port_row(dict(env, QROSETTA_HTTP_BIND="127.0.0.1:8080"), Ports(env, taken={8080}))
+    assert row.status == "FAIL" and "[lifecycle]" not in row.fix
+    assert row.steps[0][1] == ["export QROSETTA_HTTP_BIND=127.0.0.1:8090", "qrosetta start -d"]
+    (project / ".env").write_text("QROSETTA_HTTP_BIND=127.0.0.1:8085\n")
+    ctx = Context(args=type("A", (), {"project_dir": None})(), env=env, cfg=cfgmod.Config("/none", False),
+                  checkout=str(project), transport_factory=Unreachable())
+    row = next(c for c in doctor.run(ctx, Ports(env, taken={8085})).checks if c.id == "port")
+    assert row.status == "FAIL" and str(project / ".env") in row.steps[0][0]
+    assert row.steps[0][1] == ["QROSETTA_HTTP_BIND=127.0.0.1:8090"]
+    (project / ".env").write_text("QROSETTA_HTTP_BIND=nonsense\n")
+    row = next(c for c in doctor.run(ctx, Ports(env)).checks if c.id == "port")
+    assert row.reason == "bind_invalid" and row.fix == f"edit QROSETTA_HTTP_BIND in {project / '.env'}"
+    row, _ = _port_row(dict(env, QROSETTA_HTTP_BIND="nonsense"), Ports(env))
+    assert row.reason == "bind_invalid" and row.steps[0][1] == ["unset QROSETTA_HTTP_BIND"]
 
 
 def test_doctor_checks_the_recorded_address_and_talks_to_the_server_there(env):
@@ -368,6 +424,10 @@ def test_the_search_on_real_sockets_takes_the_first_port_nobody_listens_on(env):
 def test_dotenv_bind_reads_the_value_compose_would(tmp_path):
     (tmp_path / ".env").write_text("# QROSETTA_HTTP_BIND=1.2.3.4:1\nexport QROSETTA_HTTP_BIND='0.0.0.0:9000'\n")
     assert ports.dotenv_bind(str(tmp_path)) == "0.0.0.0:9000"
+    for line, value in (("127.0.0.1:9000  # moved", "127.0.0.1:9000"), ('"127.0.0.1:9001" # x', "127.0.0.1:9001"),
+                        ("'127.0.0.1:9002'#y", "127.0.0.1:9002"), ("127.0.0.1:9003#z", "127.0.0.1:9003#z")):
+        (tmp_path / ".env").write_text(f"QROSETTA_HTTP_BIND={line}\n")
+        assert ports.dotenv_bind(str(tmp_path)) == value
     (tmp_path / ".env").write_text("QROSETTA_HTTP_BIND=\nOTHER=1\n")
     assert ports.dotenv_bind(str(tmp_path)) is None
     assert ports.dotenv_bind(str(tmp_path / "missing")) is None

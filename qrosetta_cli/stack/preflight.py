@@ -30,7 +30,7 @@ def _answers(ctx, bind):
     return True
 
 
-def run(ctx, host, bind, cpu_quota, movable=False, recorded=False):
+def run(ctx, host, bind, cpu_quota, movable=False, recorded=False, source=None):
     """The report of the checks `start` makes on `host`. `movable`: the user did not choose
     `bind`, so a port another program holds moves to the first free one of 8080-8089
     (`rep.port_choice`)."""
@@ -56,6 +56,8 @@ def run(ctx, host, bind, cpu_quota, movable=False, recorded=False):
         recorded,
         lambda: doctor.other_project(host, engine_name, ctx.env, bind),
         lambda: _answers(ctx, bind),
+        source,
+        doctor.dotenv_path(ctx),
     )
     rep.checks = [c for c in rep.checks if c.id in CHECKS]
     return rep
@@ -72,7 +74,7 @@ def decide(ctx, cpu_quota):
         host = doctor.Host(ctx.env)
     else:
         return bind
-    rep = run(ctx, host, bind.address, cpu_quota, not bind.chosen, bind.source == "stack setting")
+    rep = run(ctx, host, bind.address, cpu_quota, not bind.chosen, bind.source == "stack setting", bind.source)
     failed = rep.failed
     if not failed:
         if rep.port_choice and rep.port_choice != bind.address:

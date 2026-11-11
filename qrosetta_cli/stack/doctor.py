@@ -490,7 +490,19 @@ def stop_other_command(project, working_dir):
     return cmd + " stop"
 
 
-def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False, other=None, another_server=False):
+def check_port(
+    host,
+    rep,
+    bind,
+    answers,
+    cfg=None,
+    fallback=None,
+    recorded=False,
+    other=None,
+    another_server=False,
+    source=None,
+    dotenv=None,
+):
     """`answers`: whether this project's web server publishes `bind` (a callable is asked only
     when the port is in use); `cfg` lets the fix name the config file. `other` returns the
     (project, working directory) of another Quantum Rosetta project publishing it, which is
@@ -499,23 +511,13 @@ def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False
     (another user's stack, a forwarded port); it counts as another program. `fallback` (given
     when the user did not choose `bind`) returns the address `start` would use instead, or None;
     the row then says so and `rep.port_choice` holds it. `recorded`: `start` chose `bind`
-    earlier."""
+    earlier. `source` (a `ports.Bind` source) and `dotenv` (the checkout's .env path) let the fix
+    change the setting that chose `bind`."""
     address, _, port = bind.rpartition(":")
     address = address.strip("[]") or "127.0.0.1"
     if not port.isdigit():
-        rep.add(
-            "port",
-            "FAIL",
-            f"{bind} is not ADDRESS:PORT",
-            "edit [lifecycle] bind in the config file",
-            [
-                (
-                    "Set [lifecycle] bind to ADDRESS:PORT in the config file, whose path this prints:",
-                    ["qrosetta config path"],
-                )
-            ],
-            "bind_invalid",
-        )
+        fix, steps = invalid_bind_steps(source, dotenv)
+        rep.add("port", "FAIL", f"{bind} is not ADDRESS:PORT", fix, steps, "bind_invalid")
     elif host.port_free(address, int(port)):
         rep.add("port", "PASS", f"{bind} is free" + (" (`qrosetta start` chose it earlier)" if recorded else ""))
     elif answers() if callable(answers) else answers:
@@ -546,20 +548,94 @@ def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False
             f"{ports.range_text()} are all in use"
             if fallback
             else f"{bind} is {ANOTHER_SERVER if server else 'in use'}",
-            f"qrosetta start -d --bind {OTHER_BIND}\n"
-            f'Later commands use {bind} until [lifecycle] bind = "{OTHER_BIND}" is in the file '
-            "`qrosetta config path` prints; with it, `start` needs no --bind.",
-            port_steps(cfg),
+            in_use_fix(bind, source, dotenv),
+            port_steps(cfg, source, dotenv),
             "port_in_use",
         )
 
 
-def port_steps(cfg):
-    """Use OTHER_BIND from now on: the config file gets [lifecycle] bind (created, appended to, or
-    edited by hand when it has a [lifecycle] table), then `start -d` needs no --bind."""
+ENV_SOURCE = f"env {localstack.BIND_VAR}"
+
+
+def invalid_bind_steps(source, dotenv):
+    """(fix, steps) for an address that is not ADDRESS:PORT, naming the setting that gave it."""
+    if source == ENV_SOURCE:
+        return (
+            f"set {localstack.BIND_VAR} to ADDRESS:PORT or unset it",
+            [
+                (
+                    f"{localstack.BIND_VAR} in the environment sets the address. Unset it:",
+                    [f"unset {localstack.BIND_VAR}"],
+                )
+            ],
+        )
+    if source == localstack.DOTENV_SOURCE:
+        where = dotenv or ".env"
+        return (
+            f"edit {localstack.BIND_VAR} in {where}",
+            [
+                (
+                    f"In {where}, set {localstack.BIND_VAR} to ADDRESS:PORT, for example:",
+                    [f"{localstack.BIND_VAR}={OTHER_BIND}"],
+                )
+            ],
+        )
+    if source == "--bind":
+        return ("give --bind as ADDRESS:PORT", [("Start with an address:", [f"qrosetta start -d --bind {OTHER_BIND}"])])
+    return (
+        "edit [lifecycle] bind in the config file",
+        [
+            (
+                "Set [lifecycle] bind to ADDRESS:PORT in the config file, whose path this prints:",
+                ["qrosetta config path"],
+            )
+        ],
+    )
+
+
+def in_use_fix(bind, source, dotenv):
+    """The fix line for an address another program holds."""
+    if source == ENV_SOURCE:
+        return (
+            f"qrosetta start -d --bind {OTHER_BIND}\n"
+            f"Later commands use {bind} while {localstack.BIND_VAR}={bind} is in the environment."
+        )
+    if source == localstack.DOTENV_SOURCE:
+        return (
+            f"qrosetta start -d --bind {OTHER_BIND}\n"
+            f"Later commands use {bind} while {dotenv or '.env'} sets {localstack.BIND_VAR}={bind}."
+        )
+    return (
+        f"qrosetta start -d --bind {OTHER_BIND}\n"
+        f'Later commands use {bind} until [lifecycle] bind = "{OTHER_BIND}" is in the file '
+        "`qrosetta config path` prints; with it, `start` needs no --bind."
+    )
+
+
+def dotenv_path(ctx):
+    """The checkout's .env, or None in installed mode."""
+    directory = ctx.checkout_dir()
+    return os.path.join(directory, ".env") if directory else None
+
+
+def port_steps(cfg, source=None, dotenv=None):
+    """Use OTHER_BIND from now on: where the environment or the checkout's .env chose the
+    address, that setting changes; otherwise the config file gets [lifecycle] bind (created,
+    appended to, or edited by hand when it has a [lifecycle] table). Then `start -d` needs no
+    --bind."""
     port = OTHER_BIND.rpartition(":")[2]
     head = f"Use port {port} for this and every later command:"
     line = f'bind = "{OTHER_BIND}"'
+    if source == ENV_SOURCE:
+        return [(head, [f"export {localstack.BIND_VAR}={OTHER_BIND}", "qrosetta start -d"])]
+    if source == localstack.DOTENV_SOURCE:
+        return [
+            (
+                f"Use port {port} for this and every later command. In {dotenv or '.env'}, set:",
+                [f"{localstack.BIND_VAR}={OTHER_BIND}"],
+            ),
+            ("Then start:", ["qrosetta start -d"]),
+        ]
     if cfg is None:
         return [(head, [f"qrosetta start -d --bind {OTHER_BIND}"])]
     path = shlex.quote(cfg.path)
@@ -859,6 +935,8 @@ def run(ctx, host=None):
         chosen.source == "stack setting",
         lambda: other_project(host, engine_name, ctx.env, bind),
         config is not None,
+        chosen.source,
+        dotenv_path(ctx),
     )
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_buildkit(rep, _mode_name(ctx))

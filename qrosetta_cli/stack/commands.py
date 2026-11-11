@@ -140,8 +140,7 @@ def cmd_start(ctx):
     if not cpu_quota:
         output.warn(quota.describe_off(setting.get("since")), "cpu_quota_off")
     bind = _bind(chosen)
-    if not chosen.chosen:
-        localstack.record_bind(ctx.env, stack.name, chosen.address)
+    localstack.record_bind(ctx.env, stack.name, None if chosen.chosen else chosen.address)
     jobs = set_up_env(ctx, engine, bind)
     found = own.scan(engine, stack)
     serve.check_startable(engine, found)

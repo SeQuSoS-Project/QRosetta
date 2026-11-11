@@ -92,6 +92,9 @@ def cpu_quota(env, cfg, name=None):
     return True, None, "default"
 
 
+DOTENV_SOURCE = f".env {BIND_VAR}"
+
+
 def chosen_bind(env, cfg):
     """(address, source) the user chose without a flag: QROSETTA_HTTP_BIND in the environment,
     else config lifecycle.bind; (None, None) when neither is set."""
@@ -104,12 +107,57 @@ def chosen_bind(env, cfg):
     return None, None
 
 
-def local_bind(env, cfg, name=None):
-    """(address, source) of the local web server: a chosen address, else the one `start`
+def _dotenv_value(raw):
+    """A .env value as compose reads it: a quoted value up to its closing quote (a double-quoted
+    one with backslash escapes), an unquoted one up to a ` #` comment, trimmed."""
+    raw = raw.strip()
+    if raw[:1] in ("'", '"'):
+        quote, out, i = raw[0], [], 1
+        while i < len(raw):
+            ch = raw[i]
+            if quote == '"' and ch == "\\" and i + 1 < len(raw):
+                out.append({"n": "\n", "t": "\t"}.get(raw[i + 1], raw[i + 1]))
+                i += 2
+                continue
+            if ch == quote:
+                return "".join(out)
+            out.append(ch)
+            i += 1
+        return raw
+    for i, ch in enumerate(raw):
+        if ch == "#" and (i == 0 or raw[i - 1] in " \t"):
+            return raw[:i].strip()
+    return raw
+
+
+def dotenv_bind(project_dir):
+    """QROSETTA_HTTP_BIND as the checkout's .env sets it for compose, or None."""
+    try:
+        with open(os.path.join(project_dir, ".env"), encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    found = None
+    for line in lines:
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == BIND_VAR:
+            found = _dotenv_value(value) or None
+    return found
+
+
+def local_bind(env, cfg, name=None, project_dir=None):
+    """(address, source) of the local web server: a chosen address (the environment, config, or
+    the .env of the checkout in `project_dir` unless it holds the default), else the one `start`
     recorded for the project (port 8080 was taken), else 127.0.0.1:8080."""
     value, source = chosen_bind(env, cfg)
     if value:
         return value, source
+    value = dotenv_bind(project_dir) if project_dir else None
+    if value and value != DEFAULT_BIND:
+        return value, DOTENV_SOURCE
     recorded = stack_settings(env, name).get("bind")
     if isinstance(recorded, str) and recorded:
         return recorded, "stack setting"

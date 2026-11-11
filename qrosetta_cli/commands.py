@@ -74,7 +74,7 @@ def _effective(ctx):
     add("lifecycle.engine", value or "the first of docker and podman whose `info` answers", source)
     value, source = cfgmod.env_or_config(env, "QROSETTA_ON_EXIT", cfg, "lifecycle", "on_exit")
     add("lifecycle.on_exit", value or "ask on a terminal, else standby", source)
-    bind, source = localstack.local_bind(env, cfg)
+    bind, source = localstack.local_bind(env, cfg, project_dir=ctx.checkout_dir())
     if source == "default":
         bind = f"{bind} (the compose default, {localstack.BIND_VAR})"
     elif source == "stack setting":
