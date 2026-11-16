@@ -1,4 +1,4 @@
-FROM python:3.12-slim@sha256:12316debbfb86890f6b2d825820612741ba527ad5a44e3902759141d572bfe8f
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # apt reads the Debian archive as of DEBIAN_SNAPSHOT (default from release/debian-snapshot.conf).
 ARG DEBIAN_SNAPSHOT=20261020T213255Z
