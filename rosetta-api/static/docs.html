@@ -812,9 +812,14 @@
                 <h2>Agreement classification</h2>
                 <p>
                     Two correct simulators can return outputs that look different, because they order
-                    qubits differently (endianness) or differ by an unobservable global phase. For each
-                    pair of backends, QRosetta tries a fixed list of transforms in order and reports the
-                    first under which the two outputs agree, with the metric before and after it.
+                    qubits differently (endianness) or differ by an unobservable global phase. Each pair
+                    of backends is compared in the basis its two declared qubit orderings imply: directly
+                    when both declare the same ordering, after bit reversal when one declares
+                    <code>lsb</code> and the other <code>msb</code>. Only a match in that basis, with or
+                    without a global phase, can make a pair agree. The pair record also gives the metric
+                    in the other basis and after the best qubit permutation. A statevector pair that
+                    matches only there is a disagreement; a measured pair is judged by the
+                    <a href="#stat">shot-noise test</a>, which is run in the implied basis.
                 </p>
                 <p>
                     A statevector pair agrees when its fidelity, computed on normalised vectors and stored
@@ -843,7 +848,7 @@
                         <tr><td rowspan="3">Agree</td><td><code>agree_directly</code></td><td>Same orderings; the outputs match with no transform.</td></tr>
                         <tr><td><code>agree_up_to_global_phase</code></td><td>Same orderings; the outputs match once an overall, unobservable phase is removed.</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; the outputs match after the bit reversal the declarations imply. <code>transform_effect.global_phase_aligned</code> marks a global phase offset, and <code>metrics.label_aligned_relative_phase_rad</code> gives it.</td></tr>
-                        <tr><td rowspan="3">Disagree</td><td><code>residual_disagreement</code></td><td>No registered transform accounts for the difference.</td></tr>
+                        <tr><td rowspan="3">Disagree</td><td><code>residual_disagreement</code></td><td>The outputs match in neither basis and after no qubit permutation searched.</td></tr>
                         <tr><td><code>residual_disagreement</code> with <code>metrics.unaligned_basis_match</code></td><td>The outputs match only in the basis the declared orderings do not imply: directly although the orderings differ, or after bit reversal although they are the same. <code>unaligned_basis_match</code> names that basis. Either a declared ordering is wrong, or a gate defect happens to look like a bit reversal.</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>The outputs match only after a qubit permutation that neither declared ordering implies (searched up to 7 qubits). Neither backend declares such a permutation, so the pair counts as a disagreement.</td></tr>
                         <tr><td>Note</td><td><code>agree_after_normalization</code></td><td>At least one input statevector has a norm that differs from 1 by more than <code>norm_tolerance</code>, and the normalised vectors agree. <code>metrics.normalized_agreement</code> holds the label of the normalised pair (for example <code>agree_directly</code>), and the page groups the pair by that label.</td></tr>
@@ -856,7 +861,7 @@
                     <tbody>
                         <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders, or keys of one classical bit (<code>metrics.basis_source: "single_bit"</code>, where bit reversal changes nothing); the distributions are within the JS-divergence and Hellinger thresholds. The label is descriptive; the statistical test decides significance.</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend, keys of two or more classical bits; within the thresholds after the bit reversal the declarations imply.</td></tr>
-                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds after a qubit permutation (searched up to 7 qubits).</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds only after a qubit permutation that neither declared ordering implies (searched up to 7 qubits).</td></tr>
                         <tr><td><code>distance_exceeds_threshold</code></td><td>The distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis, as in statevector mode; without it no qubit permutation brings them within.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side has no usable output; <code>metrics.reason</code> names the cause.</td></tr>
                     </tbody>
@@ -871,17 +876,15 @@
                     <thead><tr><th><code>measured_assessment</code></th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after the Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. The test found no difference at that power; it does not show that the distributions are equal.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts stay below 5 after rare outcomes are pooled, on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>; a 2 × 2 table is tested exactly instead), or neither test is significant but the power, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any shot count the server accepts. The pair counts as neither agreeing nor disagreeing. The Summary groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts stay below 5 after rare outcomes are pooled, on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>; a 2 × 2 table is tested exactly instead), or neither test is significant but the power, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair: false when no shot count the server accepts gives adequate expected counts or the target power, null when the sample does not characterise the outcome distribution (see Shot advice under <a href="#formulas">Metric formulas</a>). The pair counts as neither agreeing nor disagreeing. The Summary groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after the BY correction. A distinguishable pair, or a pair with a differing single-bit marginal (below), is what the Summary counts as a measured disagreement. A distinguishable pair that fails Holm's correction and has no differing marginal is listed apart, as significant under BY only.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side has no usable counts.</td></tr>
                     </tbody>
                 </table></div>
                 <p>
-                    For an older report without <code>measured_assessment</code>, the server reads the
-                    assessment from <code>metrics.statistical_test.verdict</code>
-                    (<code>consistent</code>, <code>inconclusive_low_shots</code>,
-                    <code>distinguishable</code>, <code>ambiguous</code>). A measured pair whose observed
+                    A pair record without <code>measured_assessment</code> is assessed from
+                    <code>metrics.statistical_test.verdict</code>. A measured pair whose observed
                     shot totals differ from the requested <code>n_shots</code> records both in
                     <code>metrics.shot_total_mismatch</code>.
                 </p>
@@ -892,6 +895,114 @@
                     returned it, and the fidelity matrix in the Agreement tab holds the direct fidelity,
                     before any reversal.
                 </div>
+            </section>
+
+            <section id="bitorder">
+                <h2>Bit order per backend</h2>
+                <p>
+                    Each result declares <code>qubit_ordering</code>: <code>msb</code> when qubit 0 is the
+                    most significant bit of the statevector index or counts bitstring, <code>lsb</code>
+                    when it is the least significant. The table gives what each runner declares;
+                    <code>tests/integration/test_runner_contract_asymmetric.py</code> checks the
+                    declarations against an asymmetric circuit on a running stack. Statevector and counts
+                    pairs are compared in the basis these declarations imply. A pair that matches only in
+                    the other basis (after bit reversal although both declare the same ordering, or
+                    directly although they differ) is a disagreement with
+                    <code>unaligned_basis_match</code>: either a declaration below is wrong or a gate defect
+                    looks like a reversal.
+                </p>
+                <div class="table-scroll"><table>
+                    <thead><tr><th>Backend</th><th>Statevector</th><th>Measured</th></tr></thead>
+                    <tbody>
+                        <tr><td>Qiskit (Aer)</td><td>lsb</td><td>lsb</td></tr>
+                        <tr><td>cuQuantum</td><td>lsb</td><td>lsb</td></tr>
+                        <tr><td>Qrisp</td><td>msb</td><td>lsb</td></tr>
+                        <tr><td>Cirq, qsim, Qulacs, QuEST, PennyLane (both), Qibo, myQLM, PyQuil, TorchQuantum, quimb</td><td>msb</td><td>msb</td></tr>
+                        <tr><td>Braket, ProjectQ (disabled)</td><td>msb</td><td>msb</td></tr>
+                    </tbody>
+                </table></div>
+                <h3>Counts keys</h3>
+                <p>
+                    A counts key is a bitstring over every classical bit the circuit declares, including
+                    bits that no <code>measure</code> statement writes; those read 0. Classical bits get
+                    one flat index in <code>creg</code> declaration order: with <code>creg c[2]; creg
+                    d[3];</code>, <code>c[0]</code> and <code>c[1]</code> are bits 0 and 1 and
+                    <code>d[0]</code>…<code>d[2]</code> are bits 2–4. In an <code>lsb</code> key classical
+                    bit 0 is the rightmost character; in an <code>msb</code> key it is the leftmost.
+                </p>
+                <p>
+                    A circuit without measurements, run in measured mode, gets a measurement of every
+                    qubit for the backends that sample natively (see <a href="#preprocessing">Circuit
+                    preprocessing</a>): a new register named <code>meas</code> (<code>meas0</code>,
+                    <code>meas1</code>, … if that name is taken), declared after the circuit's own
+                    registers, with qubit k read into <code>meas[k]</code>. Backends whose final
+                    statevector is sampled read out the same register, so every key holds the declared
+                    classical bits (all 0) followed by <code>meas</code>.
+                </p>
+            </section>
+
+            <section id="stat">
+                <h2>The shot-noise statistical test</h2>
+                <p>
+                    In measured mode a fixed distance threshold describes a pair but cannot judge it: with
+                    few shots, two samples of the same distribution can differ noticeably. Beside the
+                    JS/Hellinger label, QRosetta therefore reports for every comparable pair:
+                </p>
+                <ul>
+                    <li>a Pearson chi-square test (no continuity correction) and a Williams-corrected
+                        G-test of homogeneity between the two count vectors, in the basis the two
+                        backends' declared bit orders select, with rare outcomes pooled;</li>
+                    <li>Benjamini–Yekutieli adjusted p-values across all pairs of the run (false
+                        discovery rate control under any dependence), which decide significance, with
+                        Benjamini–Hochberg, Holm and Bonferroni adjusted values recorded beside them;</li>
+                    <li>the effect size (total variation, Cramér's V) and the power to detect a total
+                        variation of 0.05 at α/(m·c_m), on the observed degrees of freedom
+                        (<code>power.df</code>).</li>
+                </ul>
+                <p>
+                    The verdict is <code>consistent</code>, <code>distinguishable</code>,
+                    <code>inconclusive_low_shots</code> or <code>ambiguous</code>, from the BY-adjusted
+                    p-values at α&nbsp;=&nbsp;0.05 and the power; <a href="#formulas">Metric formulas</a>
+                    gives the statistics, the corrections and the power model. Each backend samples with
+                    its own derived seed, so no two backends draw the same shot sequence;
+                    <code>shared_seed</code> records whether a pair's runner seeds were equal.
+                </p>
+                <h3>Single-bit marginals</h3>
+                <p>
+                    A circuit with many outcomes often gets <code>inconclusive_low_shots</code> at the
+                    default shots, because most outcomes are seen only a few times. As a second, separate
+                    analysis, every pair whose keys have two or more bits is also compared bit by bit: for
+                    each classical bit, the two backends' counts of that bit being 0 and 1 form a
+                    2&times;2 table, tested with the same chi-square and Williams-corrected G-test. All bit
+                    tests of all pairs form one family under Holm's correction at α&nbsp;=&nbsp;0.05, so
+                    the probability of any false flag in a report is at most α however many backends
+                    really differ. A bit differs when both tests are significant. A bit with an expected
+                    count below 5, or constant in both samples, is not tested. Equal distributions have
+                    equal marginals, so a differing bit shows that the two distributions differ; marginals
+                    that do not differ leave the question open.
+                </p>
+                <p>
+                    The full-distribution tests and the marginal tests are two families, each at α. Each
+                    pair records <code>marginal_assessment</code>
+                    (<code>marginal_distinguishable</code>, <code>no_marginal_difference_detected</code>,
+                    <code>not_tested</code> or <code>not_applicable</code>) and
+                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and
+                    Holm-adjusted p-values). The marginal analysis leaves <code>measured_assessment</code>
+                    unchanged, so a pair can be <code>consistent_within_shot_noise</code> (no
+                    total-variation gap of 0.05 found) and still have a differing marginal. The Summary
+                    lists such pairs in a block of their own, the Agreement tab marks them "a single-bit
+                    marginal differs", playlist badges count them as anomalies, and crates and experiment bundles
+                    count them by <code>marginal_assessment</code>.
+                </p>
+                <p>
+                    In a simulation with 14 backends, 16 independent bits and 8,200 shots
+                    (<code>scripts/verify/false_flags.py</code>), 4.5% of 8,000 runs had a false marginal
+                    flag when every backend sampled the same distribution. With one backend off by 0.05
+                    in P(1) on four bits, 4.6% of 2,000 runs had a flag on a pair of correct backends, and
+                    every pair with the wrong backend was flagged. With every backend correct, the two
+                    families together flagged at least one pair in 3.9–4.8% of runs (keys of 2 to 4 bits),
+                    against 0.6–1.1% for the full-distribution test alone.
+                </p>
             </section>
 
             <section id="formulas">
@@ -954,9 +1065,16 @@
                         <code>statistical_test.effect_size.total_variation</code>.</li>
                 </ul>
                 <p>
-                    A measured pair is <code>distance_within_threshold</code> when
-                    JS ≤ <code>js_threshold</code> and H ≤ <code>hellinger_threshold</code>; the
-                    bit-reversed and permuted counts are tried next, as for statevectors.
+                    A measured pair is within the thresholds when JS ≤ <code>js_threshold</code> and
+                    H ≤ <code>hellinger_threshold</code>. In the label-aligned basis this gives
+                    <code>distance_within_threshold</code> (direct) or
+                    <code>agree_after_bit_reversal</code> (bit-reversed). Otherwise the label is
+                    <code>distance_exceeds_threshold</code> with <code>unaligned_basis_match</code> when
+                    the other basis is within the thresholds, else
+                    <code>agree_after_qubit_permutation</code> when a qubit permutation is, else
+                    <code>distance_exceeds_threshold</code>. The bit-reversed and permuted distances are
+                    recorded beside the direct ones; the <a href="#stat">shot-noise test</a> decides
+                    whether the pair disagrees.
                 </p>
                 <h3>Shot-noise tests</h3>
                 <p>
@@ -1062,10 +1180,8 @@
                         outcomes and can raise it. It is also a lower bound when the recommendation comes
                         from pooling rare outcomes and some outcomes were seen once: outcomes seen once in
                         n shots stop being pooled at 10n shots per backend, so the minimum often lands
-                        there (82,000 for a 12-qubit circuit at 8,200 shots, recommended as 91,000), and
-                        outcomes not yet seen do not enter the calculation. For a 12-qubit QFT at 8,200
-                        shots the minimum was 84,838, and at 100,000 shots every pair was
-                        consistent.</li>
+                        there (82,000 after a run of 8,200 shots, recommended as 91,000), and outcomes
+                        not yet seen do not enter the calculation.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ<sub>tested</sub></code>, the smallest w that any pair of distributions
                         at total variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling
@@ -1076,8 +1192,10 @@
                         <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>). The
                         bin holds only rare outcomes, so P and Q are small whenever the table has common
                         outcomes. When δ<sub>tested</sub> ≤ 0, a gap of δ could lie entirely inside the
-                        pooled bin; the power is then α′, and the pair is inconclusive however small its
-                        p-values. Otherwise the chi-square statistic follows a noncentral χ² with
+                        pooled bin, and the power is α′. The verdict rule above still applies: such a
+                        pair is <code>distinguishable</code> when both tests are significant,
+                        <code>ambiguous</code> when one is, and <code>inconclusive_low_shots</code>
+                        (<code>low_power</code>) when neither is. Otherwise the chi-square statistic follows a noncentral χ² with
                         <code>df = K − 1</code> and noncentrality
                         <code>λ = 4·n<sub>i</sub>·n<sub>j</sub>/(n<sub>i</sub> + n<sub>j</sub>) · w²</code>,
                         where n<sub>i</sub> and n<sub>j</sub> are the two backends' shot totals. With
@@ -1105,7 +1223,12 @@
                         count at which the observed proportions, scaled to that count, pool into a table
                         with that power. <code>recommended_shots_per_backend</code> is that minimum times
                         1.1 (<code>recommendation_margin</code>), rounded up to two significant figures and
-                        capped at the platform maximum. A rerun estimates the power again from its own
+                        capped at the server's shot maximum (<code>shots_max</code> in
+                        <code>GET /config</code> <code>limits</code>), or at the minimum itself when the
+                        minimum is larger. <code>resolvable_by_more_shots</code> is true for a
+                        <code>low_power</code> pair when the recommendation is at most the shot maximum,
+                        and false when it is larger or when no count up to the maximum reaches the target
+                        power with pooled outcomes (no recommendation is then given). A rerun estimates the power again from its own
                         table, whose bins change with the shot count, so a rerun at exactly the minimum
                         lands near 0.8. In simulation (5-qubit product state, 14 backends, 8 runs advised
                         from 1,000 shots), 67 of 728 pairs stayed inconclusive at the minimum (about
@@ -1115,114 +1238,6 @@
                         Because df counts the observed outcomes, the recommendation can be too small when
                         the true support is larger.</li>
                 </ul>
-            </section>
-
-            <section id="bitorder">
-                <h2>Bit order per backend</h2>
-                <p>
-                    Each result declares <code>qubit_ordering</code>: <code>msb</code> when qubit 0 is the
-                    most significant bit of the statevector index or counts bitstring, <code>lsb</code>
-                    when it is the least significant. The table gives what each runner declares;
-                    <code>tests/integration/test_runner_contract_asymmetric.py</code> checks the
-                    declarations against an asymmetric circuit on a running stack. Statevector and counts
-                    pairs are compared in the basis these declarations imply. A pair that matches only in
-                    the other basis (after bit reversal although both declare the same ordering, or
-                    directly although they differ) is a disagreement with
-                    <code>unaligned_basis_match</code>: either a declaration below is wrong or a gate defect
-                    looks like a reversal.
-                </p>
-                <div class="table-scroll"><table>
-                    <thead><tr><th>Backend</th><th>Statevector</th><th>Measured</th></tr></thead>
-                    <tbody>
-                        <tr><td>Qiskit (Aer)</td><td>lsb</td><td>lsb</td></tr>
-                        <tr><td>cuQuantum</td><td>lsb</td><td>lsb</td></tr>
-                        <tr><td>Qrisp</td><td>msb</td><td>lsb</td></tr>
-                        <tr><td>Cirq, qsim, Qulacs, QuEST, PennyLane (both), Qibo, myQLM, PyQuil, TorchQuantum, quimb</td><td>msb</td><td>msb</td></tr>
-                        <tr><td>Braket, ProjectQ (disabled)</td><td>msb</td><td>msb</td></tr>
-                    </tbody>
-                </table></div>
-                <h3>Counts keys</h3>
-                <p>
-                    A counts key is a bitstring over every classical bit the circuit declares, including
-                    bits that no <code>measure</code> statement writes; those read 0. Classical bits get
-                    one flat index in <code>creg</code> declaration order: with <code>creg c[2]; creg
-                    d[3];</code>, <code>c[0]</code> and <code>c[1]</code> are bits 0 and 1 and
-                    <code>d[0]</code>…<code>d[2]</code> are bits 2–4. In an <code>lsb</code> key classical
-                    bit 0 is the rightmost character; in an <code>msb</code> key it is the leftmost.
-                </p>
-                <p>
-                    A circuit without measurements, run in measured mode, gets a measurement of every
-                    qubit for the backends that sample natively (see <a href="#preprocessing">Circuit
-                    preprocessing</a>): a new register named <code>meas</code> (<code>meas0</code>,
-                    <code>meas1</code>, … if that name is taken), declared after the circuit's own
-                    registers, with qubit k read into <code>meas[k]</code>. Backends whose final
-                    statevector is sampled read out the same register, so every key holds the declared
-                    classical bits (all 0) followed by <code>meas</code>.
-                </p>
-            </section>
-
-            <section id="stat">
-                <h2>The shot-noise statistical test</h2>
-                <p>
-                    In measured mode a fixed distance threshold describes a pair but cannot judge it: with
-                    few shots, two samples of the same distribution can differ noticeably. Beside the
-                    JS/Hellinger label, QRosetta therefore reports for every comparable pair:
-                </p>
-                <ul>
-                    <li>a Pearson chi-square test (no continuity correction) and a Williams-corrected
-                        G-test of homogeneity between the two count vectors, in the basis the two
-                        backends' declared bit orders select, with rare outcomes pooled;</li>
-                    <li>Benjamini–Yekutieli adjusted p-values across all pairs of the run (false
-                        discovery rate control under any dependence), which decide significance, with
-                        Benjamini–Hochberg, Holm and Bonferroni adjusted values recorded beside them;</li>
-                    <li>the effect size (total variation, Cramér's V) and the power to detect a total
-                        variation of 0.05 at α/(m·c_m), on the observed degrees of freedom
-                        (<code>power.df</code>).</li>
-                </ul>
-                <p>
-                    The verdict is <code>consistent</code>, <code>distinguishable</code>,
-                    <code>inconclusive_low_shots</code> or <code>ambiguous</code>, from the BY-adjusted
-                    p-values at α&nbsp;=&nbsp;0.05 and the power; <a href="#formulas">Metric formulas</a>
-                    gives the statistics, the corrections and the power model. Each backend samples with
-                    its own derived seed, so no two backends draw the same shot sequence;
-                    <code>shared_seed</code> records whether a pair's runner seeds were equal.
-                </p>
-                <h3>Single-bit marginals</h3>
-                <p>
-                    A circuit with many outcomes often gets <code>inconclusive_low_shots</code> at the
-                    default shots, because most outcomes are seen only a few times. As a second, separate
-                    analysis, every pair whose keys have two or more bits is also compared bit by bit: for
-                    each classical bit, the two backends' counts of that bit being 0 and 1 form a
-                    2&times;2 table, tested with the same chi-square and Williams-corrected G-test. All bit
-                    tests of all pairs form one family under Holm's correction at α&nbsp;=&nbsp;0.05, so
-                    the probability of any false flag in a report is at most α however many backends
-                    really differ. A bit differs when both tests are significant. A bit with an expected
-                    count below 5, or constant in both samples, is not tested. Equal distributions have
-                    equal marginals, so a differing bit shows that the two distributions differ; marginals
-                    that do not differ leave the question open.
-                </p>
-                <p>
-                    The full-distribution tests and the marginal tests are two families, each at α. Each
-                    pair records <code>marginal_assessment</code>
-                    (<code>marginal_distinguishable</code>, <code>no_marginal_difference_detected</code>,
-                    <code>not_tested</code> or <code>not_applicable</code>) and
-                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and
-                    Holm-adjusted p-values). The marginal analysis leaves <code>measured_assessment</code>
-                    unchanged, so a pair can be <code>consistent_within_shot_noise</code> (no
-                    total-variation gap of 0.05 found) and still have a differing marginal. The Summary
-                    lists such pairs in a block of their own, the Agreement tab marks them "marginal
-                    differs", playlist badges count them as anomalies, and crates and experiment bundles
-                    count them by <code>marginal_assessment</code>.
-                </p>
-                <p>
-                    In a simulation with 14 backends, 16 independent bits and 8,200 shots
-                    (<code>scripts/verify/false_flags.py</code>), 4.5% of 8,000 runs had a false marginal
-                    flag when every backend sampled the same distribution. With one backend off by 0.05
-                    in P(1) on four bits, 4.6% of 2,000 runs had a flag on a pair of correct backends, and
-                    every pair with the wrong backend was flagged. With every backend correct, the two
-                    families together flagged at least one pair in 3.9–4.8% of runs (keys of 2 to 4 bits),
-                    against 0.6–1.1% for the full-distribution test alone.
-                </p>
             </section>
 
             <section id="reproducibility">
@@ -1248,7 +1263,8 @@
                             <li>the <code>source</code> the image recorded at build:
                                 <code>release</code> for an image built by the release pipeline,
                                 <code>built_locally</code> for a local build, "not recorded" for an image
-                                built before images recorded it; then the release and the commit;</li>
+                                without an identity file or with an unrecognised source; then the
+                                release and the commit;</li>
                             <li>what the container runtime shows the process: Apptainer's image path and
                                 sha256, or a podman container's image and id (the latter only when
                                 privileged);</li>
@@ -1273,7 +1289,8 @@
                         is absent. The crate root states <code>specimens</code>,
                         <code>timing_caveats</code> and <code>run_completeness</code>
                         (<code>complete</code>, <code>partial</code>, <code>failed</code>,
-                        <code>not_recorded</code> for older reports, or <code>not_checked</code> for a report
+                        <code>not_recorded</code> for a server report without a completeness record, or
+                        <code>not_checked</code> for a report
                         the server did not produce, such as an export from the Browser copy after the
                         server's copy expired).</li>
                     <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent,
@@ -1299,9 +1316,9 @@
                         hash covers the bytes the runner sent: little-endian <code>complex128</code>
                         amplitudes for every backend. A backend that computes in <code>complex64</code>
                         (its <code>precision</code> field says so) has its amplitudes widened to
-                        <code>complex128</code> before encoding, so the hash covers the widened values. An
-                        older report may carry <code>statevector_len</code> instead; exports and bundles
-                        write it as <code>statevector_length</code>. The hash is not stable across replays
+                        <code>complex128</code> before encoding, so the hash covers the widened values. A
+                        report that carries <code>statevector_len</code> has it written as
+                        <code>statevector_length</code> in exports and bundles. The hash is not stable across replays
                         for every backend: Cirq, for example, can differ in the last bits of some amplitudes
                         between two runs of the same circuit. Compare replayed statevectors by
                         fidelity.</li>
@@ -1412,29 +1429,30 @@
                     total, and p(all-0) within 6σ of 0.5 (± 0.0331).
                 </p>
                 <p>
-                    Each result is also checked for the environment it records. A field the runners do not
-                    record gives SKIP. The job's circuits and recorded settings must equal the plan's
-                    (<code>plan</code> check), and every backend in <code>target_simulators</code> must
-                    return a result for every circuit.
+                    Each result is also checked for the environment it records; the table gives each
+                    check's outcomes, and some checks give SKIP when the runner does not record the field.
+                    The job's circuits and recorded settings must equal the plan's (<code>plan</code>
+                    check), and every backend in <code>target_simulators</code> must return a result for
+                    every circuit.
                 </p>
                 <div class="table-scroll"><table>
-                    <thead><tr><th>Check</th><th>PASS</th><th>WARN</th><th>FAIL</th></tr></thead>
+                    <thead><tr><th>Check</th><th>PASS</th><th>WARN</th><th>FAIL</th><th>SKIP</th></tr></thead>
                     <tbody>
-                        <tr><td><code>cpu_quota_cores</code></td><td>1.0 core</td><td>On a local stack started with <code>--no-cpu-quota</code> (the CLI turns the FAIL into a WARN)</td><td>null or another value</td></tr>
-                        <tr><td><code>thread_env</code></td><td>Every thread variable is 1</td><td>—</td><td>Any other value</td></tr>
-                        <tr><td><code>memory_method</code></td><td><code>vmhwm</code></td><td>A sampling fallback, or not recorded</td><td>—</td></tr>
-                        <tr><td><code>memory_limit_mib</code></td><td>1,024 MiB</td><td>null or another value</td><td>—</td></tr>
-                        <tr><td><code>precision</code>, <code>qubit_ordering</code></td><td>As the runner registry records it for the job's mode</td><td>—</td><td>Any other value. SKIP where the registry records null, as for cuQuantum's precision</td></tr>
-                        <tr><td><code>host_virtualisation</code></td><td>No hypervisor flag</td><td>A hypervisor flag: timings are not comparable with bare-metal runs</td><td>—</td></tr>
-                        <tr><td><code>host_emulation</code></td><td>Image and host architecture equal</td><td>—</td><td>Emulation recorded, or a CPU model naming Rosetta (VirtualApple)</td></tr>
-                        <tr><td><code>provenance</code></td><td>Image source <code>release</code>, <code>pulled</code> or <code>loaded</code></td><td><code>built_locally</code> or <code>pulled-other</code></td><td>Source unknown, or a commit ending in <code>-dirty</code></td></tr>
+                        <tr><td><code>cpu_quota_cores</code></td><td>1.0 core</td><td>On a local stack started with <code>--no-cpu-quota</code> (the CLI turns the FAIL into a WARN)</td><td>null or another value</td><td>—</td></tr>
+                        <tr><td><code>thread_env</code></td><td>Every thread variable is 1</td><td>—</td><td>Any other value, or not recorded</td><td>—</td></tr>
+                        <tr><td><code>memory_method</code></td><td><code>vmhwm</code></td><td>A sampling fallback, or not recorded</td><td>—</td><td>—</td></tr>
+                        <tr><td><code>memory_limit_mib</code></td><td>1,024 MiB</td><td>null or another value</td><td>—</td><td>—</td></tr>
+                        <tr><td><code>precision</code>, <code>qubit_ordering</code></td><td>As the runner registry records it for the job's mode</td><td>—</td><td>Any other value</td><td>The registry records null, as for cuQuantum's precision</td></tr>
+                        <tr><td><code>host_virtualisation</code></td><td>No hypervisor flag</td><td>A hypervisor flag: timings are not comparable with bare-metal runs</td><td>—</td><td>Not recorded</td></tr>
+                        <tr><td><code>host_emulation</code></td><td>No emulation recorded</td><td>—</td><td>Emulation recorded, or a CPU model naming Rosetta (VirtualApple)</td><td>Not recorded, as on a stack not started with <code>qrosetta start</code></td></tr>
+                        <tr><td><code>provenance</code></td><td>Image source <code>release</code>, <code>pulled</code> or <code>loaded</code></td><td><code>built_locally</code> or <code>pulled-other</code></td><td>Any other source, including "not recorded", or a commit ending in <code>-dirty</code></td><td>The result carries no image identity</td></tr>
                     </tbody>
                 </table></div>
                 <p>
                     <code>status</code> is FAIL when any row fails, else WARN when any row warns, else PASS;
                     SKIP rows do not count. <code>backends</code> gives each backend's worst row. A stack
-                    built from a checkout therefore passes with <code>provenance</code> warnings. The
-                    circuits use only <code>x</code>, <code>h</code>, <code>ry</code>, <code>rz</code>,
+                    built from a checkout therefore gets WARN from the API because of its
+                    <code>provenance</code> rows. The circuits use only <code>x</code>, <code>h</code>, <code>ry</code>, <code>rz</code>,
                     <code>cx</code> and <code>measure</code>; the plan's <code>not_tested</code> lists what a
                     PASS says nothing about: other gates, user-defined gates, mid-circuit measurement,
                     circuits above 3 qubits, optimization levels above 0 and preprocessing off.
@@ -1442,8 +1460,11 @@
                 <h3>What <code>qrosetta selftest</code> adds</h3>
                 <p>
                     Before the jobs, the command reads one fresh probe round of <code>GET /runners</code>
-                    and <code>GET /compilers</code> with the local lifecycle token and checks every image
-                    under test (<code>--no-images</code> skips this):
+                    and <code>GET /compilers</code> with the local lifecycle token, a random token that
+                    <code>qrosetta start</code> writes to
+                    <code>$XDG_RUNTIME_DIR/qrosetta/lifecycle.token</code> and compose mounts into the
+                    API container (the CLI also sends it with host-load notices). It then checks every
+                    image under test (<code>--no-images</code> skips this):
                 </p>
                 <ul>
                     <li><code>answers</code>: FAIL when the image is unavailable or did not answer within
@@ -1465,8 +1486,10 @@
                     its reason, "not started in this stack (profile <em>P</em>)" for a backend whose
                     service the local stack does not run. Each job is saved with its report, summary,
                     crate and <code>selftest-result.json</code>; <code>selftest.json</code> in the results
-                    directory holds the combined result. The command exits 9 when any check fails and 0
-                    otherwise, warnings included.
+                    directory holds the combined result. A job the API rates WARN keeps WARN on its
+                    line, and the last line then reads <code>PASS (N warnings)</code> before the results
+                    directory. The command exits 9
+                    when any check fails and 0 otherwise, warnings included.
                 </p>
             </section>
 
