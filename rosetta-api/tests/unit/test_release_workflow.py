@@ -121,6 +121,14 @@ def test_non_distributable_images_are_never_built_or_pushed(wf, text):
     assert re.findall(r"docker push (\S+)", push) == ['"$REPOSITORY:$VERSION"']
 
 
+def test_images_are_built_as_single_manifests():
+    """Docker's default provenance attestation turns the build into an image index, which the
+    publish job's image-id step and the release manifest do not describe."""
+    script = (REPO / "scripts/release/image.sh").read_text()
+    builds = re.findall(r"docker build [^\n]*", script)
+    assert builds and all("--provenance=false" in b for b in builds)
+
+
 @pytest.mark.parametrize("sid,dockerfile", [("myqlm", "runners/myqlm-runner/Dockerfile"),
                                             ("cuquantum", "runners/cuquantum-runner/Dockerfile"),
                                             ("bqskit", "compilers/bqskit-compiler/Dockerfile"),

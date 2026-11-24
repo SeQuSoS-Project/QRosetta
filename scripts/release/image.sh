@@ -58,7 +58,7 @@ case "${1:-}" in
       args+=(--label "$label")
     done <<< "$oci"
     snapshot=$(sed -n 's/^DEBIAN_SNAPSHOT=//p' "$(dirname "$0")/../../release/debian-snapshot.conf")
-    docker build -f "$DOCKERFILE" \
+    docker build -f "$DOCKERFILE" --provenance=false \
       --build-arg "DEBIAN_SNAPSHOT=${snapshot:?}" \
       --build-arg "QROSETTA_GIT_SHA=$GITHUB_SHA" \
       --build-arg "QROSETTA_IMAGE_SOURCE=$IMAGE_SOURCE" \
