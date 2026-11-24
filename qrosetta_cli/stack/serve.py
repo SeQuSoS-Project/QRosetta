@@ -183,15 +183,21 @@ def requested_services(stack, names, profile, cfg=None):
     return wanted or None
 
 
-def plan_start(engine, stack, requested=None, env=None):
-    """The services to start, those skipped for lack of an image, and the environment for compose."""
+def plan_start(engine, stack, requested=None, env=None, named=None):
+    """The services to start, those skipped for lack of an image, and the environment for compose.
+    A missing image stops the start for a core service, a service named on the command line, and a
+    requested profile member the release publishes; a profile member the release does not publish
+    (myQLM, cuQuantum, BQSKit) is skipped, as without a profile."""
+    from qrosetta_cli.stack.buildkit import unpublished
+
     env = os.environ if env is None else env
     wanted = list(requested) if requested else list(stack.services)
     core = stack.core_services()
     candidates = wanted + [c for c in core if c not in wanted]
     images = st.find_images(engine, [stack.image_for(s) for s in candidates])
     missing = [s for s in candidates if stack.image_for(s) not in images]
-    blocking = [s for s in missing if s in core or requested]
+    optional = set(unpublished(stack, [s for s in missing if s not in (named or [])]))
+    blocking = [s for s in missing if s in core or (requested and s not in optional)]
     if blocking:
         from qrosetta_cli.stack.buildkit import get_command
 

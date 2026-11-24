@@ -339,6 +339,15 @@ def _split(stack, sids):
     return [s for s in sids if s not in build], build
 
 
+def unpublished(stack, services):
+    """The compose services among `services` whose images the release builds instead of publishing;
+    none outside a release."""
+    if not stack.release:
+        return []
+    build = set(_split(stack, [stack.services[s].id for s in services])[1])
+    return [s for s in services if stack.services[s].id in build]
+
+
 def get_command(stack, sids):
     """`qrosetta pull ...` for services the release publishes, `qrosetta build ...` for the others
     (or every service, in a checkout); one string, the pull first."""

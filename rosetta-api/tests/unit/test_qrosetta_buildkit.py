@@ -501,6 +501,21 @@ def test_start_names_build_for_services_the_release_does_not_publish(env, capsys
     assert "myqlm: not included in this release; build it: qrosetta build myqlm." in err
 
 
+def test_start_with_a_profile_skips_services_the_release_does_not_publish(env, capsys):
+    """`pull --profile cpu` then `start -d --profile cpu` on an installed release stopped at "No image
+    for myqlm" (2026-11-24 VM); a name given on the command line still needs its image."""
+    manifest = release_manifest()
+    for sid in ("qiskit", "myqlm"):
+        manifest["services"][sid]["compose"]["labels"]["org.qrosetta.profiles"] = "cpu"
+    ship(manifest)
+    fake = engine_with_release()
+    assert run(["start", "-d", "--profile", "cpu"], env, fake, server=FakeServer(fresh=True)) == 0
+    err = capsys.readouterr().err
+    assert "Not started (no image): myqlm." in err and "qrosetta build myqlm" in err
+    assert run(["start", "-d", "myqlm"], env, fake, server=FakeServer(fresh=True)) != 0
+    assert "No image for myqlm" in capsys.readouterr().err
+
+
 def test_images_verify_accepts_a_kit_build_with_info_for_release_and_signature(env, monkeypatch, capsys):
     ship()
     fake, seen = engine_with_release(), []

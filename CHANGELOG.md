@@ -26,6 +26,9 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
   answer.
 - A netavark "create bridge: Netlink error: Operation not supported" failure is explained as a
   kernel upgraded without a restart.
+- `qrosetta start -d --profile cpu` (or `gpu`, `full`) on an installed release stopped at "No image for
+  myqlm"; it now starts the profile's published services and names myQLM, cuQuantum and BQSKit as not
+  included in the release, with the `qrosetta build` command, as `start -d` without a profile does.
 
 ## [2.0.1] - 2026-11-24
 

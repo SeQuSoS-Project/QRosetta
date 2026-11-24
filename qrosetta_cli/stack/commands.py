@@ -167,7 +167,8 @@ def cmd_start(ctx):
     found = own.scan(engine, stack)
     serve.check_startable(engine, found)
     requested = serve.requested_services(stack, args.services, args.profile, ctx.cfg)
-    services, missing, compose_env = serve.plan_start(engine, stack, requested, ctx.env)
+    named = [stack.resolve_service(s) for s in args.services or []]
+    services, missing, compose_env = serve.plan_start(engine, stack, requested, ctx.env, named)
     engine.env.update(compose_env)
     if missing:
         progress(" ".join(buildkit.missing_lines(stack, [stack.services[s].id for s in missing])))
