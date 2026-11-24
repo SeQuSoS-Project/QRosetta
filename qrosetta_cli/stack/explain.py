@@ -51,6 +51,17 @@ def _name_conflict(m, text, bind):
 
 ROWS = [
     (
+        r"netavark.*Netlink error: Operation not supported|create bridge: Netlink error",
+        lambda m, t, b: (
+            "The kernel cannot create the stack's network bridge (netavark: Netlink error: Operation not "
+            "supported). This happens when the kernel was upgraded and the computer not yet restarted, so "
+            "the running kernel's modules are gone (compare `uname -r` with /usr/lib/modules). Restart, "
+            "then start again.",
+            "kernel_modules_missing",
+            "sudo reboot",
+        ),
+    ),
+    (
         r"address already in use|port is already allocated",
         lambda m, t, b: (f"{b} is in use.", "port_in_use", f"qrosetta start -d --bind {OTHER_BIND}"),
     ),

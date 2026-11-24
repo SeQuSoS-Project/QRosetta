@@ -167,6 +167,7 @@ class FakeEngine:
         self.pull_errors = []
         self.cosign = (0, "Verification for ... -- The following checks were performed", "")
         self.cosign_calls = []
+        self.exit_after_up = {}
 
     def add(self, name, labels, running=True, pod="", image=""):
         cid = "c-" + name
@@ -318,6 +319,8 @@ class FakeEngine:
                     c["State"]["Running"] = True
                 elif c is None:
                     self.add(name, dict(ours(service), **{own.CONFIG_HASH_LABEL: digest}), image=self.tagged(service))
+                if name in self.exit_after_up:
+                    self.containers[cid]["State"] = {"Running": False, "Status": "exited", "ExitCode": self.exit_after_up[name]}
         return FakeProcess()
 
     def _filters(self, args):

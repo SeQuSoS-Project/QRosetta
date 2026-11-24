@@ -336,6 +336,21 @@ def test_start_detach_names_the_reason_the_api_never_became_ready(fake, project,
     assert not any(p == "/runners" for _, p, _, _ in server.requests)
 
 
+def test_start_detach_names_a_core_container_that_exited(fake, project, env, capsys, monkeypatch):
+    """nginx exiting at start (openSUSE Tumbleweed, 2026-11-24: the host refused every container's
+    reopening of /dev/stdout) was reported as the API not answering after 180 s."""
+    clock = iter(range(0, 10000, 2))
+    monkeypatch.setattr(serve, "_clock", lambda: next(clock))
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    fake.exit_after_up = {"nginx-reverse-proxy": 1}
+    fake.logs["c-nginx-reverse-proxy"] = ("", '[emerg] 1#1: open() "/var/log/nginx/access.log" failed (13: Permission denied)\n')
+    server = FakeServer(fresh=True, block=READY_BLOCK, status={"/ready": (503, {"detail": "Not ready."})})
+    assert cli(_stopped(fake), project, env, ["start", "-d"], server=server) == Exit.ENGINE
+    err = capsys.readouterr().err
+    assert "nginx-reverse-proxy (nginx) exited with code 1" in err and "access.log" in err
+    assert "was not ready within" not in err and "qrosetta logs nginx" in err
+
+
 def test_start_detach_skips_readiness_on_a_server_without_it(fake, project, env, monkeypatch):
     monkeypatch.setattr(serve, "_sleep", lambda s: None)
     server = FakeServer(fresh=True, block={**READY_BLOCK, "features": {}})

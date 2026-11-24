@@ -21,6 +21,11 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 - `qrosetta doctor` and `start` fail podman older than 4.7 (which has no `podman compose`) instead
   of passing it, and on Debian 12, whose `docker-compose` package is Compose v1, name Docker's
   repository instead of `apt install docker-compose`.
+- `qrosetta start -d` names a core container (nginx, the API) that exited while it waited, with its
+  exit code and last log lines, within 10 s, instead of reporting after 180 s that the API did not
+  answer.
+- A netavark "create bridge: Netlink error: Operation not supported" failure is explained as a
+  kernel upgraded without a restart.
 
 ## [2.0.1] - 2026-11-24
 

@@ -24,6 +24,7 @@ from qrosetta_cli.stack.explain import engine_error, probe_message
 ASK_TIMEOUT_SEC = 10
 READY_TIMEOUT_SEC = 180
 READY_POLL_SEC = 2
+EXITED_CHECK_SEC = 10
 HANDLED_SIGNALS = tuple(getattr(signal, n) for n in ("SIGINT", "SIGTERM", "SIGHUP") if hasattr(signal, n))
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
 
@@ -410,6 +411,30 @@ def api_health_report(engine, stack, tail=20):
     return "\n".join(lines)
 
 
+def exited_core_report(engine, stack, tail=10):
+    """For each core container (nginx, the API) of this stack that has exited: its exit code and the
+    last `tail` lines of its log. '' when none has exited or the engine cannot say."""
+    names = {getattr(stack.by_id().get(i), "name", None): i for i in ("nginx", "api")}
+    try:
+        found = [c for c in own.scan(engine, stack).containers if c.service in names]
+        items = own._inspect(engine, "container", [c.id for c in found]) if found else []
+    except (CliError, OSError, AttributeError, TypeError):
+        return ""
+    lines = []
+    by_id = {item.get("Id"): item for item in items if isinstance(item, dict)}
+    for container in found:
+        state = (by_id.get(container.id) or {}).get("State") or {}
+        if state.get("Status") not in ("exited", "dead"):
+            continue
+        lines.append(f"{container.name} ({names[container.service]}) exited with code {state.get('ExitCode')}.")
+        out = engine.cli("logs", "--tail", str(tail), container.id)
+        logged = (out.stdout or "").splitlines() + (out.stderr or "").splitlines()
+        if logged:
+            lines.append(f"Last {len(logged[-tail:])} lines of its log:")
+            lines += ["  " + x for x in logged[-tail:]]
+    return "\n".join(lines)
+
+
 def up_failure(engine, stack, text, bind):
     """The error for a failed `compose up`, with the API's health report when it was unhealthy."""
     err = engine_error(text, "`compose up` failed", bind)
@@ -461,6 +486,7 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
     transport = ctx.transport(server=server, with_token=True)
     started = _clock()
     deadline = started + timeout
+    next_exit_check = started + EXITED_CHECK_SEC
     while True:
         try:
             block = handshake.server_block(handshake.fetch_config(transport, timeout=5))
@@ -471,6 +497,20 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
             why = api[1]
         except CliError as exc:
             why = exc.message
+        if _clock() >= deadline or _clock() >= next_exit_check:
+            next_exit_check = _clock() + EXITED_CHECK_SEC
+            exited = exited_core_report(engine, stack) if engine is not None else ""
+            if exited:
+                first = exited.splitlines()[0]
+                raise CliError(
+                    f"Quantum Rosetta did not start: {first}\n{exited}",
+                    Exit.ENGINE,
+                    "core_exited",
+                    hint="qrosetta logs nginx --tail 50" if "(nginx)" in first else "qrosetta logs api --tail 50",
+                    headline=f"Quantum Rosetta did not start: {first}",
+                    evidence=exited.splitlines()[1:],
+                    step="Read the full log:",
+                )
         if _clock() >= deadline:
             raise CliError(
                 f"The API at {url} was not ready within {timeout} s. {why}",

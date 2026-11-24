@@ -231,6 +231,7 @@ RECORDED = [
     ("exec /usr/local/bin/python3: exec format error", "wrong_architecture"),
     ("toomanyrequests: retry-after: 0.000000, allowed: 44000/minute", "registry_rate_limit"),
     ("dependency failed to start: container rosetta-api is unhealthy", "api_unhealthy"),
+    ("Error response from daemon: netavark (exit code 1): create bridge: Netlink error: Operation not supported (os error 95)", "kernel_modules_missing"),
     ('Error response from daemon: Conflict. The container name "/rosetta-api" is already in use by container '
      '"abc123". You have to remove (or rename) that container to be able to reuse that name.', "name_conflict"),
     ('Error: creating container storage: the container name "rosetta-api" is already in use by 3f2a. You have to '
