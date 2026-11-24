@@ -196,7 +196,7 @@ def test_published_images_get_an_sbom_attestation_and_a_recorded_image_id(wf):
     assert attest["with"]["push-to-registry"] is True
     image_id = next(s for s in steps if s.get("id") == "image-id")
     assert "imagetools inspect --raw" in image_id["run"] and '["config"]["digest"]' in image_id["run"]
-    assert '"$config" != "$local_id"' in image_id["run"]
+    assert '"$config" != "$local_id" ] && [ "$DIGEST" != "$local_id"' in image_id["run"]
     record = next(s for s in steps if s.get("name") == "Record the digest and image id")
     assert '"image_id"' in record["run"] and record["env"]["IMAGE_ID"] == "${{ steps.image-id.outputs.image_id }}"
     assert "--signer-repository \"$GITHUB_REPOSITORY\"" in _runs(wf["jobs"]["wheel"])

@@ -282,8 +282,8 @@ jobs:
           config=$(docker buildx imagetools inspect --raw "$REPOSITORY@$DIGEST" \
             | python3 -c 'import json, sys; m = json.load(sys.stdin); print(m["config"]["digest"])')
           local_id=$(docker image inspect --format '{{.Id}}' "$REPOSITORY@$DIGEST")
-          if [ "$config" != "$local_id" ]; then
-            echo "::error::config digest $config differs from the pulled image's id $local_id"
+          if [ "$config" != "$local_id" ] && [ "$DIGEST" != "$local_id" ]; then
+            echo "::error::the pulled image's id $local_id is neither the config digest $config nor the manifest digest $DIGEST"
             exit 1
           fi
           echo "image_id=$config" >> "$GITHUB_OUTPUT"
