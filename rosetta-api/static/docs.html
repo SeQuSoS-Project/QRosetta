@@ -72,11 +72,18 @@
                     The input is a circuit in OpenQASM 2.0. QRosetta sends it to each selected simulator
                     backend: Qiskit (Aer), Cirq, qsim, Qibo, PennyLane (lightning and default.qubit),
                     Qulacs, QuEST, quimb, myQLM, PyQuil, Qrisp, cuQuantum and TorchQuantum.
-                    <code>GET /runners</code> lists the backends a server offers. The published release
-                    images do not include myQLM and cuQuantum, which their vendors distribute under their
-                    own licence terms; <code>qrosetta build myqlm cuquantum</code> builds them on this
-                    computer, from the build files the package carries or from a checkout of the
+                    <code>GET /runners</code> lists the backends a server offers. Because of their licence
+                    terms, the published release images leave out the myQLM and cuQuantum backends and
+                    the BQSKit compiler; <code>qrosetta build myqlm cuquantum bqskit</code> builds them on
+                    this computer, from the build files the package carries or from a checkout of the
                     repository, and cuQuantum also needs an NVIDIA GPU.
+                </p>
+                <p>
+                    A server runs in one of two execution modes. In <em>local mode</em> (a Docker Compose
+                    or podman stack, as <code>qrosetta start</code> creates) each backend is a
+                    long-running service that the API sends its runs to. In <em>Kubernetes mode</em> the
+                    API starts a Kubernetes Job for each run of each backend, and the Job ends when the
+                    run does. The operator sets the mode with <code>EXECUTION_MODE</code>.
                 </p>
                 <p>
                     Every backend receives the circuit in the same request format and answers in the same
@@ -100,8 +107,9 @@
                     calculation of your own.
                 </p>
                 <p>
-                    A run can also send the circuit to compile-only services (eight circuit compilers).
-                    Their output circuits are recorded and shown, but neither simulated nor compared; see
+                    A run can also send the circuit to compile-only services: eight circuit compilers,
+                    seven of them in the published images and BQSKit built on this computer. Their
+                    output circuits are recorded and shown, but neither simulated nor compared; see
                     <a href="#compilers">Compile-only services</a>.
                 </p>
             </section>
@@ -112,7 +120,8 @@
                 <p>
                     The README in the repository lists the host requirements (Linux on x86_64, rootless
                     podman 4.7 or later or Docker Engine, Docker Compose v2, Python 3.11 or later) and the
-                    packages to install on Fedora, Ubuntu and RHEL. With a published release:
+                    packages to install on Fedora, Ubuntu, Debian and RHEL, AlmaLinux and Rocky Linux.
+                    With a published release:
                 </p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li><code>pipx install qrosetta</code> installs the <code>qrosetta</code> command.</li>
@@ -160,10 +169,12 @@
                 <h3>Run a circuit</h3>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li>On the first visit the editor holds a three-qubit GHZ circuit, Statevector is
-                        ticked under Mode, and every backend the server offers is selected. To start from
-                        another circuit, choose it in the <strong>Quantum Algorithms</strong> menu under
-                        Generate Circuits and press <strong>Load</strong> (see
-                        <a href="#circuits">Circuit sources</a>).</li>
+                        ticked under Mode, and every backend the server offers is selected. To run your own
+                        circuit, paste its OpenQASM 2.0 text into the <strong>Editor</strong>, or press
+                        <strong>Import QASM</strong> above the editor to read a <code>.qasm</code> file. To
+                        start from a ready-made circuit, choose it in the <strong>Quantum
+                        Algorithms</strong> menu under Generate Circuits and press <strong>Load</strong>
+                        (see <a href="#circuits">Circuit sources</a>).</li>
                     <li>Press the run button at the bottom of the left column. Its label states what will
                         run, for example "Run Editor Code · Statevector · 14 backends". The Run choice,
                         Mode, Run Name and the settings chips stay in view above it. During the run the
@@ -171,8 +182,8 @@
                         its Status column.</li>
                     <li>Read the <strong>Summary</strong> tab. Its first line says how many backends
                         returned a result. The next line names any backend that differs from the others,
-                        for example "Qrisp differs from all 13 other backends", and says whether the rest
-                        agree with each other; for the GHZ circuit it reads "Every comparable pair of
+                        with how many of them it differs from, and says whether the rest agree with each
+                        other; when no pair differs, as for the GHZ circuit, it reads "Every comparable pair of
                         backends agrees." The Backends table has one row per backend: status, the backends
                         it differs from, bit order, precision, total time and peak memory.
                         <strong>Evidence</strong>, below the table, lists the pairs by verdict.</li>
@@ -187,12 +198,21 @@
                         executed text) and <strong>Exports</strong> (figures and tables, the RO-Crate and
                         the report files).</li>
                 </ol>
+                <p>
+                    From the command line, <code>qrosetta run FILE.qasm</code> runs a circuit file in
+                    statevector mode on the server's default backends, follows the job, saves the report
+                    and summary under <code>./qrosetta-results</code> and prints the page link of the job.
+                    <code>-m measured --shots 8200</code> runs it measured, <code>-b qiskit,cirq</code>
+                    picks backends and <code>--seed 42</code> fixes the sampling seed; <code>qrosetta run
+                    --help</code> lists every option (<a href="#cli">Command-line tool</a>).
+                </p>
 
                 <h3>Before and during a run</h3>
                 <p>
                     The page checks the inputs before it submits a run. If a value blocks the run (shots,
-                    timeout, seed or a threshold out of range, a Run Name with an invisible character, more
-                    circuits than the server accepts), nothing is sent: a red box above the run button,
+                    timeout, seed or a threshold out of range, a Run Name holding a control character, an
+                    invisible formatting character or a line separator, more circuits than the server
+                    accepts), nothing is sent: a red box above the run button,
                     headed "Not submitted. Fix these inputs first:", lists every problem, and the field
                     concerned is outlined in red inside its chip. The list is updated whenever the
                     workspace changes. A request the server refuses is shown with the server's message.
@@ -265,8 +285,10 @@
                         (<code>GET /examples</code>), <strong>MQT Bench</strong> algorithms and
                         <strong>QASMBench</strong> circuits. Typing in the menu searches all four. For an
                         algorithm or an MQT Bench algorithm, Qubits sets the size; an MQT Bench size moves
-                        to the nearest size the suite has. Examples and QASMBench circuits have a fixed
-                        size. The line under the menu describes the selection, and for an example names the
+                        to the nearest size the suite has. Load refuses a size above the limit of the ticked
+                        modes: 18 qubits while Statevector is ticked and 24 otherwise, so untick
+                        Statevector to load a larger circuit for a measured run. Examples
+                        and QASMBench circuits have a fixed size. The line under the menu describes the selection, and for an example names the
                         mode it is meant for. <strong>Load</strong> puts the selection in the editor, asking
                         first if that would replace your edits; loading an example also ticks its mode.
                         <strong>+ Add</strong> adds the selection to the playlist.</li>
@@ -274,8 +296,9 @@
                         reads a file into the editor and <strong>Export QASM</strong> saves its text.
                         <strong>+ Add to Playlist</strong> adds the editor's circuit to the playlist under
                         the name above the editor.</li>
-                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> adds a ready-made set
-                        (Sanity Check: every algorithm at 5 qubits; Scaling Test: GHZ from 5 qubits to the
+                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> is a list of ready-made
+                        sets; choose one and press <strong>Apply</strong> to replace the playlist with it,
+                        after a question if the playlist is not empty (Sanity Check: every algorithm at 5 qubits; Scaling Test: GHZ from 5 qubits to the
                         statevector limit; Memory Stress: random, Bernstein–Vazirani and VQE circuits at
                         the statevector limit; the sets come from <code>GET /quickload</code>).
                         <strong>Auto-Gen</strong> adds circuits of the chosen algorithms at random qubit
@@ -291,7 +314,8 @@
                     <strong>Run</strong>, in the footer of the left column, switches between
                     <strong>Editor code</strong> and <strong>Playlist</strong>. Loading a circuit into the
                     editor selects Editor code; adding to the playlist selects Playlist. A warning appears
-                    in the footer when a circuit has more qubits than a ticked mode allows, and when a
+                    in the footer when the circuit that will run (the editor's, or the largest in the
+                    playlist) has more qubits than a ticked mode allows, and when a
                     measured circuit has more than 22 qubits, where several backends are likely to reach
                     the timeout. A 24-qubit QFT of 340 gates did not finish within 300 s on 7 of 14
                     backends; a 24-qubit circuit of 94 gates finished on all 14 within 300 s, 3 of them
@@ -371,7 +395,8 @@
                 <p>
                     Spaces between a register and its index (<code>q [0]</code>, <code>q[ 0 ]</code>) are
                     legal. The pytket round-trip does not accept them, so with SDK preprocessing on the API
-                    removes them and records an <code>API:</code> entry. Gate parameters may have any name,
+                    removes them, together with the circuit's comments, and records an
+                    <code>API:</code> entry. Gate parameters may have any name,
                     including <code>lambda</code>, as in <code>qelib1.inc</code>.
                     <a href="#run-options">Input limits</a>, under Run options, lists the size limits.
                 </p>
@@ -425,12 +450,31 @@
                 </p>
                 <p>
                     <strong>In the API</strong> (entries beginning <code>API:</code>, tagged API on the
-                    page). The API prepares one circuit per dispatch group. Measured mode has two groups:
+                    page). The API prepares one circuit for each dispatch group, a set of backends that
+                    receive the same text. Statevector mode has one group. Measured mode has two:
                     <code>measured_native</code>, backends that sample with their own sampler, and
-                    <code>measured_sampled</code>, backends whose final statevector is sampled. With
-                    <em>Apply SDK Preprocessing</em> on, the API merges several quantum registers into one
-                    in declaration order and passes the circuit through pytket (parse, then write), which
-                    removes barriers; in statevector mode it first removes the final measurements.
+                    <code>measured_sampled</code>, backends whose final statevector is sampled. In
+                    statevector mode the API first removes the final measurements. With <em>Apply SDK
+                    Preprocessing</em> on, it then makes these changes in order:
+                </p>
+                <ul>
+                    <li>When a register and its index are separated by spaces (<code>q [ 0 ]</code>),
+                        it removes the spaces, and with them every comment.</li>
+                    <li>It merges several quantum registers into one in declaration order.</li>
+                    <li>A parameter of a top-level gate call that contains <code>^</code> or
+                        <code>exp()</code>, which pytket's parser does not accept, is replaced by its
+                        value in double precision; the text is then rebuilt without comments. A
+                        <code>^</code> or <code>exp()</code> inside a gate definition is refused with HTTP
+                        400; write the power as a product or run with preprocessing off.</li>
+                    <li>It passes the circuit through pytket (parse, then write), which removes
+                        comments, barriers and the calls of a gate whose definition has an empty
+                        body.</li>
+                    <li>pytket writes every multi-controlled X as <code>c4x</code>; the API renames each
+                        such call by its number of operands to <code>cx</code>, <code>ccx</code>,
+                        <code>c3x</code> or <code>c4x</code>.</li>
+                </ul>
+                <p>
+                    Each of these changes, when it applies, adds an <code>API:</code> entry.
                 </p>
                 <p>
                     The pytket round-trip inlines custom <code>gate</code> definitions, expands register
@@ -442,7 +486,8 @@
                     <code>c3sqrtx</code> into <code>u3</code> and <code>cx</code>. It keeps <code>cu1</code>,
                     <code>crz</code>, <code>crx</code>, <code>cry</code>, <code>cu3</code>, <code>ch</code>,
                     <code>cy</code>, <code>csx</code>, <code>rxx</code>, <code>rzz</code>, <code>ccx</code>,
-                    <code>cswap</code>, <code>c3x</code> and <code>c4x</code> as written. tket sets a
+                    <code>cswap</code>, <code>c3x</code> and <code>c4x</code> as written, the
+                    multi-controlled X gates through the renaming above. tket sets a
                     parameter within 1e-11 half-turns of a multiple of π/4 to that multiple; the
                     <code>API:</code> entries list each parameter moved in this way.
                 </p>
@@ -489,6 +534,17 @@
                     field of the same meaning, listed in the Swagger UI at <code>/docs</code>.
                 </p>
                 <ul>
+                    <li><strong>Global Optimization Level</strong> (<code>optimization_level</code>,
+                        Backends popover, 0 None, 1 Light, 2 Medium or 3 Heavy, default 0) is the
+                        transpiler or optimization level asked of every backend. Each backend runs at the
+                        nearest level it supports, at most its own maximum (<code>max_level</code> in
+                        <code>GET /runners</code>); each result records
+                        <code>optimization_level_requested</code> and the level applied,
+                        <code>optimization_level</code>. The Optimization level column of the same popover
+                        overrides the level for one backend (<code>runner_config</code>, for example
+                        <code>{"qiskit": 2}</code>); the API refuses a level above that backend's maximum
+                        with HTTP 400. Pointing at a backend's level menu shows what each of its levels
+                        does.</li>
                     <li><strong>Timeout per backend</strong> (<code>timeout_seconds</code>, Execution
                         chip, 10 to 300 s, default 60 s) covers start-up, warm-up and every timed run;
                         <a href="#resources">Resources, queueing and timeouts</a> describes its
@@ -522,8 +578,11 @@
                         fails with that reason. <code>GET /config</code> also shows whether an exclusive
                         run is running or waiting, and operators can turn the option off with
                         <code>QROSETTA_EXCLUSIVE_ENABLED=false</code>.</li>
-                    <li><strong>Shots</strong> (<code>n_shots</code>, measured mode, default 8,200; the
-                        field appears beside the chips when Measured is ticked). With 14 backends, 8,199
+                    <li><strong>Execution Environment</strong> (Execution chip) shows where this server
+                        runs the backends, as local runner services or as Kubernetes Jobs; it cannot be
+                        changed from the page, and the report records it.</li>
+                    <li><strong>Shots</strong> (<code>n_shots</code>, measured mode, 1 to 1,000,000,
+                        default 8,200; the field appears beside the chips when Measured is ticked). With 14 backends, 8,199
                         shots per backend give the power model 0.8 on circuits with up to 16 outcomes.
                         Circuits with more outcomes need more shots, and the Summary recommends a count
                         when it can.</li>
@@ -538,15 +597,19 @@
                         number; while a count is not, or the counts exceed these limits, the popover and
                         the Run footer say so and the run button is disabled.</li>
                     <li><strong>Custom ordering (phases)</strong> (<code>runner_phases</code>), in the
-                        Backends popover, gives each backend a phase number. Backends with the same number
-                        run at the same time, and phases run in ascending order. In measured mode the
+                        Backends popover, gives each backend a phase number in a Phase column. Backends
+                        with the same number run at the same time, and phases run in ascending order. Two
+                        buttons fill the column: <strong>All concurrent</strong> sets every phase to 1,
+                        and <strong>Sequential</strong> numbers the selected backends 1, 2, 3, ... in the
+                        order of the list, so they run one after another. In measured mode the
                         phases cover both groups of backends (sampled statevector and native sampling):
                         phase 2 of either group starts only after phase 1 of both has finished. Without
                         phases every backend runs at once. Phases decide which backends share the host at
                         the same moment; the CPU quota of each runner stays the same.</li>
                     <li><strong>Apply SDK Preprocessing</strong> (<code>apply_preprocessing</code>, SDK
                         Preprocessing chip): On, Off, or Both, which runs an experiment (<a
-                        href="#batch">Several circuits and experiments</a>). <a
+                        href="#batch">Several circuits and experiments</a>); a compile-only run takes On
+                        or Off. <a
                         href="#preprocessing">Circuit preprocessing</a> describes what it changes.</li>
                     <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>, SDK
                         Preprocessing chip) lifts the playlist length limit and, for an experiment, the
@@ -581,8 +644,10 @@
                         large; split a large playlist and run the parts one after another.</li>
                     <li>Run, circuit, task and author names hold at most 200 characters
                         (<code>limits.max_label_length</code>), without control characters, invisible
-                        formatting characters or line separators. The page removes such characters and
-                        shortens longer names before it sends them.</li>
+                        formatting characters or line separators. The Run Name field takes at most 200
+                        characters, and a Run Name holding such a character blocks the run until it is
+                        removed. From circuit, task and author names the page removes such characters, and
+                        it shortens longer names, before it sends them.</li>
                     <li>At most 10,000 operation statements (gates, <code>measure</code>,
                         <code>reset</code>, <code>barrier</code>, <code>if</code>; <code>max_qasm_gates</code>
                         in <code>GET /config</code>), counted at top level and inside gate definitions; a
@@ -601,9 +666,9 @@
                         first limit stops a short circuit of nested definitions from expanding to millions
                         of gates. The second exists because several parsers keep a copy of a nested
                         definition for every application: eleven levels of definitions that each call the
-                        level below twice (4,094 nested applications) peaked at about 710 MiB in the
+                        level below twice (4,094 nested applications) peak at about 710 MiB in the
                         PennyLane runners and twelve levels at about 1,090 MiB, while 8,192 top-level calls
-                        of one definition took about 340 MiB. The bundled benchmark circuits are
+                        of one definition take about 340 MiB. The bundled benchmark circuits are
                         exempt.</li>
                     <li>With <code>apply_preprocessing</code> on, the API prepares each circuit (the
                         pytket round-trip) in a separate process limited to 1,024 MiB and 120 s
@@ -615,9 +680,9 @@
                         round-trip. The memory a preparation needs cannot be read from the circuit text,
                         so only circuits whose preparation has been measured are refused in advance. Among
                         the bundled circuits, the MQT Bench Grover circuits exceed the memory limit from 15
-                        qubits: <code>grover-noancilla</code> needed about 1.5 GiB and
+                        qubits: <code>grover-noancilla</code> needs about 1.5 GiB and
                         <code>grover-v-chain</code> about 1.2 GiB at 15 qubits, and both more than 2 GiB
-                        from 16 and 17 qubits respectively; every other bundled circuit stayed under
+                        from 16 and 17 qubits respectively; every other bundled circuit stays under
                         400 MiB. <code>GET /config</code> lists the bundled circuits over the server's
                         limit as <code>bundled_over_prep_limit</code>. A run that includes one of them with
                         preprocessing on is refused with HTTP 400 naming the circuit, and the page says so
@@ -637,8 +702,9 @@
                 <h3>Quirk visualizer</h3>
                 <p>
                     The editor's <strong>Visualize</strong> button converts the editor's circuit to Quirk's
-                    JSON format (<code>POST /visualize/quirk</code>) and opens it in Craig Gidney's Quirk,
-                    an external web page, in a frame that covers the window. <strong>Open in
+                    JSON format (<code>POST /visualize/quirk</code>) and opens it in Quirk-E at
+                    <code>https://quirk-e.dev</code>, an external web page based on Craig Gidney's Quirk,
+                    in a frame that covers the window. <strong>Open in
                     Quirk</strong> (the same page in a new tab) and <strong>Close</strong> sit above the
                     frame. Escape also closes it, except while the keyboard focus is inside the Quirk
                     frame, where Quirk receives the key; Tab out of the frame or use Close. On a phone or
@@ -670,14 +736,16 @@
                         <tr><td>Playlist</td><td><code>POST /run_batch_suite</code>, one job for all its circuits</td></tr>
                         <tr><td>Statevector and Measured both ticked</td><td>Two jobs, run one after the other; compile-only services go with the first</td></tr>
                         <tr><td>Compile-only services chosen, neither Statevector nor Measured ticked</td><td>The same request with <code>simulate: false</code>: only the compile-only services run, and the report records <code>simulated: false</code></td></tr>
-                        <tr><td>SDK Preprocessing set to Both</td><td><code>POST /experiments</code> (below)</td></tr>
+                        <tr><td>SDK Preprocessing set to Both</td><td><code>POST /experiments</code> (below); a compile-only run (neither mode ticked) needs On or Off and is not submitted with Both</td></tr>
                     </tbody>
                 </table></div>
                 <p>
                     When one press starts two jobs, a row above the tabs switches between their results.
                     A playlist result opens on the <strong>Suite Summary</strong> tab. A playlist shares
                     one master seed, and because a backend's <code>runner_seed</code> depends only on the
-                    master seed and its runner key, each backend receives the same
+                    master seed and its runner key (the backend's id, or
+                    <code>&lt;runner&gt;~opt&lt;L&gt;~run&lt;N&gt;</code> in multi-run mode), each
+                    backend receives the same
                     <code>runner_seed</code> for every circuit. Each circuit is named after its source
                     (<code>name</code> in the request, else the algorithm or file name) and its qubit
                     count; a bundled benchmark circuit adds its suite, as in <code>ghz (4q) [MQT
@@ -695,7 +763,9 @@
                     <li><code>inputs/&lt;circuit&gt;.qasm</code>: the QASM of every circuit as it was at
                         run time;</li>
                     <li><code>results/&lt;setting&gt;/&lt;circuit&gt;.json</code>: the report of each
-                        circuit and setting;</li>
+                        circuit and setting, with each statevector replaced by its sha256 and length
+                        unless the request sets <code>keep_statevectors: true</code> (an API field the
+                        page does not send);</li>
                     <li><code>conformance_matrix.csv</code>: whether each circuit ran on each backend.
                         Every error row carries the marker <code>untriaged</code>, for you to classify as an
                         adapter issue, an SDK issue, by-design behaviour or a resource limit; the software
@@ -728,7 +798,8 @@
                     HTTP 400 before it starts, and the page says so before it sends it.
                 </p>
                 <p>
-                    Compile-only services chosen together with <strong>Both</strong> run with the first
+                    Compile-only services chosen together with <strong>Both</strong> and at least one
+                    ticked mode run with the first
                     experiment of the press of Run (the statevector one when both modes are ticked), once
                     per circuit and setting. That experiment's panel lists them, and its bundle holds the
                     outputs under <code>compiled_circuits/&lt;setting&gt;/&lt;circuit&gt;/</code> and in
