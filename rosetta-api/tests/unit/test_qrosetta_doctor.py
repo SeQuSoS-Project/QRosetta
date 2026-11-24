@@ -277,6 +277,9 @@ def test_check_error_codes_are_cli_errors():
     ('NAME="Ubuntu"\nID=ubuntu\nID_LIKE=debian\n', "docker", "sudo apt install docker-compose-v2"),
     ('ID=linuxmint\nID_LIKE="ubuntu debian"\n', "podman", "sudo apt install --no-install-recommends docker-compose-v2"),
     ("ID=debian\n", "podman", "sudo apt install --no-install-recommends docker-compose"),
+    ('ID=debian\nVERSION_ID="13"\n', "podman", "sudo apt install --no-install-recommends docker-compose"),
+    ('ID=debian\nVERSION_ID="12"\n', "docker", "docker-compose-plugin package from Docker's repository"),
+    ('ID=debian\nVERSION_ID="12"\n', "podman", "docker-compose-plugin package from Docker's repository"),
     ("ID=fedora\n", "podman", "sudo dnf install docker-compose"),
     ('ID="rhel"\nID_LIKE="fedora"\n', "podman", "~/.docker/cli-plugins/docker-compose"),
     ('ID="rocky"\nID_LIKE="rhel centos fedora"\n', "docker", "sudo dnf install docker-compose-plugin"),
@@ -284,6 +287,33 @@ def test_check_error_codes_are_cli_errors():
 ])
 def test_compose_install_step_follows_the_distribution(os_release, engine, step):
     assert step in eng.compose_install_step(os_release, engine)
+
+
+@pytest.mark.parametrize("version,old", [("4.3.1", True), ("4.6.2", True), ("4.7.0", False), ("4.9.3", False),
+                                         ("5.4.2", False), ("", False)])
+def test_podman_before_4_7_lacks_compose(version, old):
+    assert eng.podman_lacks_compose("podman", version) is old
+    assert eng.podman_lacks_compose("docker", version) is False
+
+
+def test_doctor_fails_podman_4_3_on_debian_12_and_names_docker_repository(env, monkeypatch):
+    """Debian 12 ships podman 4.3.1 and Compose v1 as docker-compose; the README's Debian route then
+    loops on `apt install docker-compose` (2026-11-24 VM)."""
+    monkeypatch.setitem(PODMAN_INFO, "version", {"Version": "4.3.1"})
+    host = FakeHost(env, compose="Error: unrecognized command `podman compose`",
+                    files={"/etc/os-release": 'PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"\nVERSION_ID="12"\nID=debian\n'})
+    failed = {c.id: c for c in _doctor(env, host).failed}
+    assert set(failed) >= {"engine", "compose"}
+    assert "older than 4.7" in failed["engine"].message or "before 4.7" in failed["engine"].message
+    for check in (failed["engine"], failed["compose"]):
+        assert "Docker's repository" in check.fix and "apt install --no-install-recommends docker-compose" not in check.fix
+
+
+def test_doctor_fails_old_podman_elsewhere_with_upgrade_advice(env, monkeypatch):
+    monkeypatch.setitem(PODMAN_INFO, "version", {"Version": "4.4.1"})
+    host = FakeHost(env, files={"/etc/os-release": 'ID="rocky"\nID_LIKE="rhel centos fedora"\nVERSION_ID="9.2"\n'})
+    failed = {c.id: c for c in _doctor(env, host).failed}
+    assert "upgrade podman to 4.7 or later" in failed["engine"].fix
 
 
 def test_doctor_names_the_rhel_install_step(env):

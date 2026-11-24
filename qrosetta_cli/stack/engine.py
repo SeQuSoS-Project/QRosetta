@@ -76,12 +76,42 @@ def os_release_ids(text):
     return [fields.get("id", ""), *fields.get("id_like", "").split()]
 
 
+PODMAN_COMPOSE_SINCE = (4, 7)
+DEBIAN_DOCKER_REPO_STEP = (
+    "install Docker Engine with the docker-compose-plugin package from Docker's repository "
+    "(https://docs.docker.com/engine/install/debian/), or use Debian 13"
+)
+
+
+def version_tuple(text):
+    """(major, minor) from a version string such as '4.3.1' or 'v2.30.0'; None if there is none."""
+    match = re.match(r"\s*v?(\d+)(?:\.(\d+))?", text or "")
+    return (int(match.group(1)), int(match.group(2) or 0)) if match else None
+
+
+def podman_lacks_compose(engine_name, version):
+    """True for a podman older than 4.7, which has no `podman compose`."""
+    found = version_tuple(version)
+    return engine_name == "podman" and found is not None and found < PODMAN_COMPOSE_SINCE
+
+
+def _debian_before_13(os_release):
+    ids = os_release_ids(os_release)
+    if not ids or ids[0] != "debian":
+        return False
+    fields = dict(line.partition("=")[::2] for line in (os_release or "").splitlines() if "=" in line)
+    found = version_tuple(fields.get("VERSION_ID", "").strip("\"'"))
+    return found is not None and found < (13, 0)
+
+
 def compose_install_step(os_release, engine_name):
     """How to install Docker Compose v2 for `engine_name` on the distribution `os_release` describes."""
     ids = os_release_ids(os_release)
     quiet = " --no-install-recommends" if engine_name == "podman" else ""
     if "ubuntu" in ids:
         return f"sudo apt install{quiet} docker-compose-v2"
+    if _debian_before_13(os_release):
+        return DEBIAN_DOCKER_REPO_STEP
     if "debian" in ids:
         return f"sudo apt install{quiet} docker-compose"
     if ids[0] == "fedora":

@@ -303,13 +303,23 @@ def check_engine(host, rep, configured):
         )
         rep.add("engine", "FAIL", exc.message, fix, steps, exc.reason)
         return None
-    status = "INFO" if choice.name == "podman" and "permission denied" in choice.reason else "PASS"
-    rep.add(
-        "engine",
-        status,
+    described = (
         f"{choice.name} {choice.version} ({'rootless' if choice.rootless else 'rootful'}); "
-        f"{choice.reason}" + "".join(f"; {n}" for n in choice.notes if n not in choice.reason),
+        f"{choice.reason}" + "".join(f"; {n}" for n in choice.notes if n not in choice.reason)
     )
+    if eng.podman_lacks_compose(choice.name, choice.version):
+        step = _old_podman_step(host)
+        rep.add(
+            "engine",
+            "FAIL",
+            f"{described}; podman before 4.7 has no `podman compose`",
+            step,
+            _compose_steps(step),
+            "podman_too_old",
+        )
+    else:
+        status = "INFO" if choice.name == "podman" and "permission denied" in choice.reason else "PASS"
+        rep.add("engine", status, described)
     if choice.name == "docker" and not choice.rootless:
         rep.add(
             "rootful_docker", "INFO", "the Docker daemon runs as root; members of the docker group are root-equivalent"
@@ -317,7 +327,27 @@ def check_engine(host, rep, configured):
     return choice
 
 
+def _old_podman_step(host):
+    step = eng.compose_install_step(host.read("/etc/os-release"), "podman")
+    return (
+        step
+        if step == eng.DEBIAN_DOCKER_REPO_STEP
+        else "upgrade podman to 4.7 or later, or install Docker Engine with Compose v2"
+    )
+
+
 def check_compose(host, rep, choice):
+    if eng.podman_lacks_compose(choice.name, choice.version):
+        step = _old_podman_step(host)
+        rep.add(
+            "compose",
+            "FAIL",
+            f"podman {choice.version} has no `podman compose` (it needs 4.7 or later)",
+            step,
+            _compose_steps(step),
+            "podman_too_old",
+        )
+        return
     try:
         out = host.run([choice.name, "compose", "version"], capture_output=True, text=True, timeout=30)
         text = (out.stdout + out.stderr).strip()

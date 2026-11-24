@@ -18,6 +18,9 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 - README "First run": `qrosetta export crate` after the two-mode example run exited 2 (a result
   with several jobs needs `--job MODE`); the example now passes `--job measured`, and the manual's
   command table lists `--job` for `export crate` and `export report`.
+- `qrosetta doctor` and `start` fail podman older than 4.7 (which has no `podman compose`) instead
+  of passing it, and on Debian 12, whose `docker-compose` package is Compose v1, name Docker's
+  repository instead of `apt install docker-compose`.
 
 ## [2.0.1] - 2026-11-24
 
