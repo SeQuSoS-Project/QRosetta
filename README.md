@@ -109,6 +109,44 @@ mkdir -p ~/.local/bin && ln -sf ~/.local/share/qrosetta/bin/qrosetta ~/.local/bi
 
 The same `pip install` with `--upgrade` updates it.
 
+### openSUSE Leap
+
+Tested on Leap 16.0 with podman 5.4.2.
+
+```bash
+sudo zypper install podman docker-compose python3-pipx
+systemctl --user enable --now podman.socket
+pipx ensurepath
+pipx install qrosetta
+```
+
+Leap does not delegate the cpu and memory controllers to users; `qrosetta doctor` prints the
+commands that do, followed by a reboot.
+
+### Ubuntu 22.04, Debian 12, and RHEL 9 and its rebuilds
+
+These releases need one change to the routes above. Ubuntu 22.04 ships Python 3.10 and RHEL 9 ships Python 3.9, and
+`qrosetta` needs 3.11; pip then says only "No matching distribution found for qrosetta". Debian 12's podman 4.3 has
+no `podman compose`, and its `docker-compose` package is Compose v1.
+
+- **Ubuntu 22.04** (tested on 22.04.5 with Docker 29.1.3): the Ubuntu-with-Docker route with Ubuntu's Python 3.11.
+
+  ```bash
+  sudo apt install docker.io docker-compose-v2 pipx python3.11 python3.11-venv
+  sudo usermod -aG docker $USER   # then log out and in again
+  pipx ensurepath
+  pipx install --python python3.11 qrosetta
+  ```
+
+- **Debian 12** (tested with Docker 29.10.0): install Docker Engine and `docker-compose-plugin` from
+  Docker's repository (https://docs.docker.com/engine/install/debian/), then
+  `sudo apt install pipx`, `sudo usermod -aG docker $USER` (log out and in again), `pipx ensurepath` and
+  `pipx install qrosetta`.
+- **RHEL 9, AlmaLinux 9 and Rocky Linux 9** (tested on Rocky 9 with podman 5.8.2): the RHEL 10 route
+  with `sudo dnf install python3.12` and `python3.12 -m venv ~/.local/share/qrosetta`. RHEL 9 does not
+  delegate the cpu controller to users; `qrosetta doctor` prints the two commands that do, followed
+  by a reboot.
+
 ### On every distribution
 
 - Over SSH, run `sudo loginctl enable-linger $USER` once before the first `start`. Without it,

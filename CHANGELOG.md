@@ -32,6 +32,8 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 - When every health check of the API failed at once without output on podman, `start` says the engine
   could not run the check and how to switch to runc (seen with podman 6.2.0 and crun 1.31 for
   containers created through Docker Compose).
+- README: install routes for openSUSE Leap 16, Ubuntu 22.04 (Python 3.11 from the archive), Debian 12
+  (Docker's repository) and RHEL 9 and its rebuilds (Python 3.12), each tested on a VM.
 
 ## [2.0.1] - 2026-11-24
 
