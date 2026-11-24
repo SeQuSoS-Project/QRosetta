@@ -18,7 +18,10 @@ Finland.
 The local stack needs:
 
 - Linux on x86_64. Other hosts start only with `qrosetta start --allow-emulation`, and their
-  timings are not comparable.
+  timings are not comparable. PennyLane Lightning and QuEST need a CPU with AVX and stop with
+  SIGILL without it; the other backends run. A virtual machine needs the host's CPU model (for
+  example libvirt's `host-passthrough`), since some default models lack AVX. `qrosetta doctor`
+  warns when AVX is missing.
 - An engine: rootless podman 4.7 or later (podman added `podman compose` in 4.7.0), or Docker
   Engine.
 - Docker Compose v2 as the compose provider: `docker compose version` or `podman compose version`

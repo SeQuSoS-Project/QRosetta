@@ -317,6 +317,18 @@ def test_doctor_fails_old_podman_elsewhere_with_upgrade_advice(env, monkeypatch)
     assert "upgrade podman to 4.7 or later" in failed["engine"].fix
 
 
+@pytest.mark.parametrize("flags,warned", [("fpu sse4_2 popcnt", True), ("fpu sse4_2 avx", False),
+                                          ("fpu avx avx2 fma", False)])
+def test_doctor_warns_when_the_cpu_has_no_avx(env, flags, warned):
+    """Westmere-model VM (2026-11-24): PennyLane Lightning and QuEST died with SIGILL; a Sandy Bridge
+    model (AVX, no AVX2) passed every self-test check."""
+    host = FakeHost(env, files={"/proc/cpuinfo": f"processor\t: 0\nflags\t\t: {flags}\n"})
+    rows = [c for c in _doctor(env, host).checks if c.id == "cpu_features"]
+    assert bool(rows) is warned
+    if warned:
+        assert rows[0].status == "WARN" and "pennylane-lightning and quest" in rows[0].message
+
+
 def test_doctor_names_the_rhel_install_step(env):
     host = FakeHost(env, compose="Error: looking up compose provider failed",
                     files={"/etc/os-release": 'ID="rhel"\nID_LIKE="fedora"\nVERSION_ID="10.0"\n'})

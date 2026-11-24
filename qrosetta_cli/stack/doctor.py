@@ -280,6 +280,25 @@ def check_os(host, rep):
         )
 
 
+NEEDS_AVX = ("pennylane-lightning", "quest")
+
+
+def check_cpu_features(host, rep):
+    """WARN on an x86_64 CPU without AVX: PennyLane Lightning and QuEST then die with SIGILL."""
+    if host.machine() not in ("x86_64", "amd64"):
+        return
+    text = host.read("/proc/cpuinfo") or ""
+    flags = next((line.split(":", 1)[1].split() for line in text.splitlines() if line.startswith("flags")), None)
+    if flags is None or "avx" in flags:
+        return
+    rep.add(
+        "cpu_features",
+        "WARN",
+        f"this CPU has no AVX; {' and '.join(NEEDS_AVX)} stop with SIGILL on it, the other backends run. "
+        "In a virtual machine, give it the host's CPU model (for example host-passthrough).",
+    )
+
+
 def check_engine(host, rep, configured):
     try:
         choice = eng.choose_engine(host.env, configured, host.which, host.run)
@@ -962,6 +981,7 @@ def run(ctx, host=None):
     host = host or Host(ctx.env)
     rep = Report()
     check_os(host, rep)
+    check_cpu_features(host, rep)
     choice = check_engine(host, rep, ctx.cfg.get("lifecycle", "engine"))
     if choice:
         check_compose(host, rep, choice)

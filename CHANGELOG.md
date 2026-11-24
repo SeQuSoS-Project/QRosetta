@@ -34,6 +34,8 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
   containers created through Docker Compose).
 - README: install routes for openSUSE Leap 16, Ubuntu 22.04 (Python 3.11 from the archive), Debian 12
   (Docker's repository) and RHEL 9 and its rebuilds (Python 3.12), each tested on a VM.
+- `qrosetta doctor` warns on a CPU without AVX, on which PennyLane Lightning and QuEST stop with SIGILL;
+  README "Requirements" says so.
 
 ## [2.0.1] - 2026-11-24
 
