@@ -7,6 +7,7 @@ infra/rahti/api.yaml allow-privilege-escalation-no-securitycontext 1  # Kubernet
 nginx/nginx.conf missing-internal 1  # @proxy is a named location, which is internal already
 nginx/nginx.conf request-host-used 1  # Host, used by the API only to compare with Origin, never to build a URL
 qrosetta_cli/client/account.py insecure-file-permissions 1  # chmod 0700 of the credentials directory: the restrictive mode is the point
+qrosetta_cli/stack/buildkit.py insecure-file-permissions 2  # 0755 directories of the unpacked build kit: the image build copies modes, and nginx (uid 101) must read the static files
 qrosetta_cli/stack/hostload.py insecure-file-permissions 1  # chmod 0700 of the lifecycle-token directory
 rosetta-api/db/migrate.py avoid-sqlalchemy-text 1  # ALTER TABLE from the baseline's own table and column names, quoted by the dialect's preparer
 rosetta-api/services/circuit_library.py exec-detected 1  # runs the repository's algorithm_templates/*.json, never request data

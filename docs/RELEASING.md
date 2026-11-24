@@ -63,7 +63,9 @@ version:
   with the owner as required reviewer and tag rule `v*` (done 2026-10-27). Until the first upload
   the PyPI project does not exist and the publisher is a pending one, which reserves no name
   (https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/): before the first
-  final tag, check that https://pypi.org/manage/account/publishing/ still lists it.
+  final tag, check that https://pypi.org/manage/account/publishing/ still lists it. PyPI
+  expires a pending publisher that has not been used to publish (it e-mails a warning 5 days
+  before); register it again with the same four values.
 - Zenodo: log in with GitHub and switch on `SeQuSoS-Project/QRosetta` before the first final
   tag.
 - GHCR: allow public packages for the organisation (an organisation owner; done); set the
