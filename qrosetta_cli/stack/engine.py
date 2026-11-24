@@ -66,13 +66,19 @@ COMPOSE_PLUGIN_STEP = (
 )
 
 
-def os_release_ids(text):
-    """The ID and ID_LIKE values of an /etc/os-release text, lower case."""
+def os_release_fields(text):
+    """The fields of an /etc/os-release text, keys and values lower case."""
     fields = {}
     for line in (text or "").splitlines():
         key, sep, value = line.partition("=")
         if sep:
             fields[key.strip().lower()] = value.strip().strip("\"'").lower()
+    return fields
+
+
+def os_release_ids(text):
+    """The ID and ID_LIKE values of an /etc/os-release text, lower case."""
+    fields = os_release_fields(text)
     return [fields.get("id", ""), *fields.get("id_like", "").split()]
 
 
@@ -99,8 +105,7 @@ def _debian_before_13(os_release):
     ids = os_release_ids(os_release)
     if not ids or ids[0] != "debian":
         return False
-    fields = dict(line.partition("=")[::2] for line in (os_release or "").splitlines() if "=" in line)
-    found = version_tuple(fields.get("VERSION_ID", "").strip("\"'"))
+    found = version_tuple(os_release_fields(os_release).get("version_id", ""))
     return found is not None and found < (13, 0)
 
 
