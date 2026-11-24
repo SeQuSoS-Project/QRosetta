@@ -3,11 +3,11 @@ message: "If you use QRosetta in academic work, please cite the software using t
 type: software
 version: "2.0.1"
 date-released: "2026-11-24"
-doi: "10.5281/zenodo.24497797"
+doi: "10.5281/zenodo.24505798"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.24497797"
-    description: "This version (2.0.0), archived on Zenodo"
+    value: "10.5281/zenodo.24505798"
+    description: "This version (2.0.1), archived on Zenodo"
   - type: doi
     value: "10.5281/zenodo.24497796"
     description: "All versions; resolves to the newest"
