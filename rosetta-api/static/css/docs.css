@@ -7,7 +7,7 @@ html { scroll-padding-top: 5rem; }
 .doc-prose p { margin-bottom: .9rem; }
 .doc-prose ul { list-style: disc; padding-left: 1.25rem; margin-bottom: .9rem; }
 .doc-prose ul li { margin-bottom: .35rem; }
-.doc-prose code { background: #eef2ff; color: #3730a3; padding: .1rem .35rem; border-radius: .3rem; font-size: .85em; }
+.doc-prose code { background: #eef2ff; color: #3730a3; padding: .1rem .35rem; border-radius: .3rem; font-size: .85em; overflow-wrap: anywhere; }
 .doc-prose pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: .6rem; overflow-x: auto; font-size: .82rem; margin-bottom: 1rem; }
 .doc-prose pre code { background: none; color: inherit; padding: 0; }
 .doc-prose .table-scroll { overflow-x: auto; margin-bottom: 1rem; }
