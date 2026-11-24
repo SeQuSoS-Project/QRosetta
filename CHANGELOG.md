@@ -13,6 +13,12 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
   the file of the OpenQASM 2.0 paper and gives `cu3` an extra phase on the control; Qibo's parser follows
   the paper's `cu3`, so Qibo can differ from the other backends on `cu3` circuits.
 
+### Fixed
+
+- README "First run": `qrosetta export crate` after the two-mode example run exited 2 (a result
+  with several jobs needs `--job MODE`); the example now passes `--job measured`, and the manual's
+  command table lists `--job` for `export crate` and `export report`.
+
 ## [2.0.1] - 2026-11-24
 
 ### Fixed

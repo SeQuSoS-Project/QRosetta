@@ -182,8 +182,11 @@ command line:
 ```bash
 qrosetta run algorithm:ghz:3 -m statevector,measured
 qrosetta show summary                 # the server's verdicts for the newest result
-qrosetta export crate                 # its RO-Crate
+qrosetta export crate --job measured  # the measured job's RO-Crate
 ```
+
+A result with several jobs, like this one, needs `--job MODE` for `export` and the other views;
+`show summary` shows every job.
 
 To run your own circuit, write it as OpenQASM 2.0 in a file and pass the file; `-m` chooses
 `statevector` (the default), `measured`, `compile`, or a comma list of them, one job each:
