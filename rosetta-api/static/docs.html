@@ -1509,19 +1509,21 @@
                         <code>throttled</code> and <code>compilation_throttled</code> (the CPU quota held the
                         runner for at least 1% of the window), <code>unstable_repeats</code> (timed runs
                         spread by more than 1.3×), <code>mixed_cores</code>, <code>outside_process</code>
-                        (container CPU at least 5 ms and 10% above the process's),
+                        (over the simulation window the container's CPU time exceeds the simulating process's
+                        by at least 5 ms and by at least 10% of the container's),
                         <code>single_timed_run</code>, <code>no_cpu_quota</code>,
                         <code>virtualised_host</code>, <code>emulated_cpu</code>, <code>emulated_image</code>
                         (the image's architecture differs from the host's), <code>non_x86_64</code>, and
                         across backends <code>cross_backend_core_speeds</code>,
                         <code>cross_backend_cpu_quota</code> and <code>cross_backend_image_commits</code>. The
                         page's "throttled", "outside process", "unstable" and "mixed cores" tags and its
-                        "Caveats" list show these records. For a report stored before they were recorded,
-                        the page asks the server (<code>POST /timing-caveats</code>).</li>
+                        "Caveats" list show these records. For a report without these records, the page asks
+                        the server (<code>POST /timing-caveats</code>).</li>
                     <li id="host-load"><strong>Host load from the <code>qrosetta</code> command.</strong>
-                        <code>qrosetta start</code>, <code>stop</code>, <code>remove</code> and
-                        <code>build</code> (and <code>pull</code> and image probes) open a host-load notice
-                        with the API on a local stack, authenticated by the local lifecycle token and kept
+                        <code>qrosetta stop</code>, <code>remove</code>, <code>build</code>,
+                        <code>pull</code>, <code>images save</code> and <code>images load</code>, and
+                        <code>qrosetta start</code> when it starts or recreates services beside a running
+                        stack, open a host-load notice with the API on a local stack, authenticated by the local lifecycle token and kept
                         alive by a heartbeat every 10 s. An open notice holds the run gate like a run, so an
                         exclusive run waits for it. The notice ends with the command, or 30 s after its last
                         heartbeat. Every local result records the notices open while it was in flight
@@ -1562,8 +1564,10 @@
                         device preprocessing, the myQLM and Qibo circuit objects).
                         <code>simulation_time_sec</code> is wall clock from t2 to t3: executing the circuit
                         and returning the statevector or drawing the shots. Building a counts histogram from
-                        drawn shots, and converting an SDK's result object into the reported array, fall
-                        outside both windows.</li>
+                        drawn shots, re-keying counts, and converting an SDK's result object into the reported
+                        array fall outside both windows, except where the SDK draws and tallies the shots in
+                        one call: Qibo, quimb, myQLM, Qrisp and Qiskit Aer (the qiskit and cuQuantum
+                        runners). Their tally is inside <code>simulation_time_sec</code> (next list).</li>
                     <li><strong>Conversion outside the simulation call.</strong> For Qulacs, QuEST, qsim,
                         Qiskit and cuQuantum the SDK's own entry point (pytket's
                         <code>process_circuits</code>, qsimcirq's <code>simulate</code> and
@@ -1572,14 +1576,9 @@
                         (<code>tk_to_qulacs</code>, <code>tk_to_quest</code>,
                         <code>translate_cirq_to_qsim</code>, Aer's <code>assemble_circuits</code> and run
                         configuration) is in <code>compilation_time_sec</code>, and the timed run applies the
-                        converted circuit with the same routine, options and seeds as the SDK call. The split
-                        and unsplit paths gave identical statevector bytes, counts under the same seed and
-                        executed texts on 1,080 to 2,200 cases per backend
-                        (<code>scripts/adapter_paths/compare_paths.py</code>). On a 4-qubit, 2,200-gate
-                        circuit, statevector simulation time fell from 28–37 ms to 1.3–2.3 ms (cuQuantum 50
-                        to 13 ms), with total times within 3%. Each adapter refuses to load with another
-                        version of the SDK whose call it reproduces. The disabled Braket and ProjectQ runners
-                        still convert inside the call.</li>
+                        converted circuit with the same routine, options and seeds as the SDK call. Each
+                        adapter refuses to load with another version of the SDK whose call it reproduces. The
+                        disabled Braket and ProjectQ runners convert inside the call.</li>
                     <li><strong>Sampling from a statevector.</strong> In measured mode, a backend with
                         <code>sampling_method: "sv_sample"</code> reads the state from the SDK and draws the
                         shots inside <code>simulation_time_sec</code>, because the shots need the state.</li>
@@ -1597,15 +1596,30 @@
                         execution of the assembled circuit: GPU memory allocation, the cuStateVec kernels and
                         the copy of the result to the host. CUDA context initialisation happens in the
                         warm-up run and shows up only in <code>cpu_time_sec</code>.</li>
+                    <li><strong>Qiskit Aer (qiskit and cuQuantum).</strong> In measured mode Aer draws the
+                        shots and counts them in its C++ simulation, so the counts are inside
+                        <code>simulation_time_sec</code>. Re-keying them over the circuit's classical bits
+                        follows the window.</li>
                     <li><strong>myQLM.</strong> myQLM returns a statevector as one Python object per
                         non-zero amplitude (<code>SAMPLE nbshots=0</code>), and building that result is
                         inside the simulation window. Its time and memory grow with the number of non-zero
-                        amplitudes: a GHZ state is fast, a dense state slow.</li>
+                        amplitudes: a GHZ state is fast, a dense state slow. In measured mode PyLinalg draws
+                        the shots and aggregates them into frequencies per basis state inside
+                        <code>submit()</code>, so that tally is inside <code>simulation_time_sec</code>; the
+                        integer counts are rebuilt from the frequencies after the window. The adapter's
+                        <code>preprocessing_applied</code> note says so.</li>
+                    <li><strong>Qibo.</strong> In measured mode <code>CircuitResult.frequencies()</code>
+                        draws the shots and tallies them in one call, inside
+                        <code>simulation_time_sec</code>, as the adapter's <code>preprocessing_applied</code>
+                        note says.</li>
                     <li><strong>quimb.</strong> <code>simulation_time_sec</code> includes the search for a
                         contraction path (cotengra's <code>auto-hq</code> optimiser, repeated each run with
                         its caches cleared) as well as the contraction. The search is randomised, so quimb's
                         times vary between timed runs more than a statevector backend's. It runs in the
-                        simulating process, with cotengra's worker pool turned off.</li>
+                        simulating process, with cotengra's worker pool turned off. In measured mode
+                        <code>simulate_counts()</code> contracts the network, draws the shots and tallies them
+                        in one call, so the tally is inside <code>simulation_time_sec</code>, as the adapter's
+                        <code>preprocessing_applied</code> note says.</li>
                     <li><strong>Qrisp.</strong> Qrisp samples the shots and tallies them in one call
                         (<code>QuantumCircuit.run()</code>), so the tally is inside
                         <code>simulation_time_sec</code>. The adapter also wraps Qrisp's
@@ -1613,9 +1627,8 @@
                         without it, a seeded draw maps to different outcomes in different processes.
                         <code>run()</code> samples from the ordered list, so the ordering is inside the
                         window, and the adapter's <code>preprocessing_applied</code> note says so. With
-                        <code>h</code> on every qubit and 8,200 shots on one CPU, <code>run()</code> took
-                        14.7 ms with the ordering and 15.0 ms without at 16 qubits, 76 against 66 ms at 20,
-                        223 against 171 ms at 22, and 1.11 against 0.67 s at 24.</li>
+                        <code>h</code> on every qubit and 8,200 shots on one CPU, the ordering adds little up
+                        to 16 qubits and about 0.4 s of the 1.1 s <code>run()</code> takes at 24 qubits.</li>
                 </ul>
                 <h3>Comparing timings</h3>
                 <ul>
@@ -1647,9 +1660,7 @@
                         the range between jobs, treat backends within about 3% of each other as tied, and
                         report quimb with its full range. Check that <code>simulation_throttled_sec</code> is
                         zero and that <code>cpu_max_mhz</code> names the same kind of core for every
-                        backend. On the development host this gave medians within 0–3% between jobs for 13 of
-                        14 backends, quimb excepted. Qibo's first timed run at 18 qubits was 14–17% slower
-                        in some jobs, which is why one repeat is not enough.</li>
+                        backend.</li>
                     <li><strong>Rank marks.</strong> The ≈ mark next to a rank
                         (<code>overlaps_next</code>) means this backend's slowest timed run took at least as
                         long as the next backend's fastest in the same job. It reflects the spread within one
@@ -1697,17 +1708,15 @@
                         near 0 for a statevector of a few MiB (seen for PennyLane at 16 qubits and Qibo at
                         18). It is the memory the simulation window added. PennyLane-Lightning allocates its
                         statevector when the device is created, during compilation, so its window holds only
-                        the copy read out at the end. A fixed allocator threshold that would expose every
-                        allocation slowed some backends by more than 3×, so it is not used.</li>
+                        the copy read out at the end.</li>
                     <li><strong>Host memory only.</strong> Every memory field is host RSS. GPU device memory
                         is not measured, so GPU runs are not ranked by memory: they are listed under
                         <code>unranked</code> with reason <code>gpu_memory_not_measured</code>, and the
                         Performance tab says so.</li>
                     <li><strong>RSS and the container limit.</strong> RSS counts the shared libraries a
                         process has mapped, such as the CUDA runtime, so <code>process_peak_rss_mb</code> can
-                        exceed the container's <code>memory_limit_mib</code> without the process being out of
-                        memory (cuQuantum and quimb read about 545 and 610 MiB under an earlier 512 MiB
-                        limit).</li>
+                        exceed the container's limit (<code>cpu_environment.memory_limit_mib</code>) without
+                        the process being out of memory.</li>
                     <li><strong>What dominates memory.</strong> For small circuits,
                         <code>process_peak_rss_mb</code> is mostly the Python interpreter and the SDK's import
                         footprint. Compare it with <code>theoretical_statevector_mb</code>, the size of a
@@ -1730,9 +1739,9 @@
                         <code>gate_metrics_basis</code> says which.</li>
                     <li><strong>Rankings</strong> include only successful runs. Failed runs, and GPU runs in
                         the memory ranking, are listed under <code>unranked</code> with a reason after the
-                        ranked rows. The Performance tables have a Device column, and the playlist summary
-                        tags the device of the backend in its "Fastest (total time)" and "Lowest process peak
-                        RSS" columns.</li>
+                        ranked rows. In the Performance tables a GPU run carries a GPU tag under its name,
+                        and the playlist summary tags the device of the backend in its "Fastest (total time)"
+                        and "Lowest process peak RSS" columns.</li>
                 </ul>
             </section>
 
@@ -1742,7 +1751,7 @@
                     <li><strong>CPU and memory quota.</strong> Each runner is limited to 1 CPU by a cgroup
                         quota, and its math libraries run one thread. Each runner container (local mode) and
                         runner Job (Kubernetes mode) has a 1 GiB memory limit; each result records the limit
-                        that applied as <code>memory_limit_mib</code>. A process that uses more than one core
+                        that applied as <code>cpu_environment.memory_limit_mib</code>. A process that uses more than one core
                         (an SDK thread pool the thread variables do not control) is throttled: the kernel
                         stops it until the next 100 ms period, and that wait falls inside the timed window.
                         Every result records the throttled time as <code>simulation_throttled_sec</code> and
@@ -1779,18 +1788,16 @@
                         ends with status <code>timeout</code>, <code>timeout_kind: "queue"</code> and
                         <code>never_started: true</code>, and the Summary says it never started.</li>
                     <li><strong>Kubernetes job slots.</strong> On a Kubernetes deployment at most
-                        <code>k8s_job_slots</code> runner Jobs exist at a time
-                        (<code>QROSETTA_K8S_MAX_CONCURRENT_JOBS</code>, set to fit the project's CPU quota). A
-                        run waits for a free slot under the same cap, recorded as
-                        <code>queue_wait_sec</code>. A run whose pod the cluster's quota did not admit, or
-                        that the scheduler did not place, before its timeout also ends with
-                        <code>never_started: true</code>. A pod still pulling its image or creating its
-                        container at the timeout is a <code>timeout</code> whose message says so
-                        (<code>pod_waiting_reason</code>); a pod whose image cannot be pulled is
-                        <code>offline</code>. Each result's <code>runner_image</code> names the image by
-                        digest (<code>registry/name@sha256:&lt;digest&gt;</code>) when the deployment records
-                        digests, and the report's <code>image_digests</code> says, per image, whether the
-                        deployment pushed it or kept an earlier build.</li>
+                        <code>k8s_job_slots</code> runner Jobs exist at a time, and a run may wait for a free
+                        slot. The wait is recorded as <code>queue_wait_sec</code>, under the same cap. A run
+                        that gets no slot, or whose pod the cluster does not admit or place, before its
+                        timeout ends with status <code>timeout</code> and <code>never_started: true</code>. A
+                        pod still pulling its image or creating its container at the timeout is a
+                        <code>timeout</code> whose message says so (<code>pod_waiting_reason</code>); a pod
+                        whose image cannot be pulled is <code>offline</code>. Each result's
+                        <code>runner_image</code> names the image by digest
+                        (<code>registry/name@sha256:&lt;digest&gt;</code>) when the deployment records
+                        digests.</li>
                     <li><strong>Timeout scope.</strong> The timeout in the Execution chip (the server's
                         allowed range is shown under the field) applies to each backend separately. It covers
                         starting the isolated runner process, importing the SDK, the warm-up run and the
@@ -1820,7 +1827,8 @@
                     distinct levels) with <code>/compare</code>, <code>/compare_measured</code>,
                     <code>/run_batch_suite</code> or <code>POST /experiments</code>. A request holds at most
                     one compile per level of every enabled compiler for each circuit:
-                    17 with the eight compilers. <code>GET /compilers</code> lists them with the versions each running image
+                    17 with the eight compilers, 14 on a stack from the published images, which have no
+                    BQSKit. <code>GET /compilers</code> lists them with the versions each running image
                     reports (<code>versions</code>: pip SDK versions, components built from source,
                     build-file sha256 and image commit; null in Kubernetes mode, where no compiler runs
                     between jobs), and the popover shows them under each compiler.
@@ -1887,11 +1895,11 @@
                     hash differs (the image was built from another commit) is left out.
                 </p>
                 <p>
-                    Outputs are deterministic on a given image: the same circuit, level and image give the
-                    same text in every job. BQSKit's numerical resynthesis does not carry over exactly to
-                    another image: on another Python or BLAS build its angles can differ in the last digits
-                    while gate and two-qubit counts match. Cite the record's text rather than a regenerated
-                    one.
+                    Every compiler except BQSKit gives the same text for the same circuit, level and image
+                    in every job. BQSKit's outputs (levels 1–3) can differ between runs on one image, and
+                    between images, in gate counts as well as angles; each output still passes its check.
+                    Compare BQSKit gate counts as distributions over several runs. Cite the record's text
+                    rather than a regenerated one.
                 </p>
                 <h3>Gate counts</h3>
                 <p>
@@ -1902,8 +1910,8 @@
                     <code>depth()</code> of the same text. Each record also has
                     <code>multi_qubit_gate_count</code> (statements on two or more qubits) and
                     <code>gate_counts</code> (statements per gate name). The compilers write different gate
-                    sets: staq keeps <code>ccx</code>, <code>cu1</code> and <code>swap</code> as single
-                    statements, Quartz writes <code>h</code>, <code>x</code>, <code>rz</code> and
+                    sets: staq keeps <code>swap</code> as a single statement at every level and
+                    <code>ccx</code> and <code>cu1</code> only at <code>-O1</code>, Quartz writes <code>h</code>, <code>x</code>, <code>rz</code> and
                     <code>cx</code>, Cirq <code>cz</code> and single-qubit gates. A smaller
                     <code>gate_count</code> therefore does not mean a smaller circuit across compilers; to
                     compare compilers, translate the outputs to one gate set and count there.
@@ -1931,7 +1939,7 @@
                             under new names (<code>qelib1_c3x</code> and so on) and renames the calls. A gate
                             defined in the circuit on more than 3 qubits is replaced by its body. Both are
                             listed in the passes. A circuit BQSKit's parser does not read is refused. Level 4
-                            is not offered: it took 195 s on a 4-qubit, 6-gate circuit.</td></tr>
+                            is not offered: it takes minutes even on a 4-qubit, 6-gate circuit.</td></tr>
                         <tr><td>PyZX 0.10.6</td><td>1, 2</td><td>Level 1: <code>full_reduce</code> of the
                             ZX-diagram, then <code>extract_circuit</code>. Level 2: level 1, then
                             <code>basic_optimization</code> of the extracted circuit. Before PyZX parses the
@@ -1947,8 +1955,8 @@
                             a linear chain of the circuit's qubit count, qubit i coupled to i + 1 in both
                             directions: heuristic (A*) at level 0, exact (SAT) at level 1, with QMAP's default
                             pre- and post-mapping optimizations. Level 1 is refused above 7 qubits: exact
-                            mapping took more than 200 s on an 8-qubit GHZ circuit already laid out as a chain
-                            (50 s at 7 qubits). The output's <code>// i</code> and <code>// o</code> lines give
+                            mapping takes more than 200 s on an 8-qubit GHZ circuit already laid out as a
+                            chain. The output's <code>// i</code> and <code>// o</code> lines give
                             the physical qubit of each logical qubit at input and output; both must be
                             permutations of all the qubits, and the unitary check reads the output through
                             them. A circuit with a qubit that has no gates other than barriers, identities and
@@ -1998,8 +2006,8 @@
                             when its solver call times out. A compile in which a slice was still timed out at
                             the end, or the budget ran out, is recorded as an error, because the result would
                             depend on machine speed. The job's timeout (at most 300 s, including process start)
-                            ends a compile first when it is shorter. The image installs python-sat 1.8.dev14,
-                            since the 1.8.dev13 that Q-Synth 5.1 pins is no longer on PyPI.</td></tr>
+                            ends a compile first when it is shorter. The image installs python-sat
+                            1.8.dev14.</td></tr>
                         <tr><td>Quartz 0.3.2</td><td>0</td><td>Qiskit translates the circuit to
                             <code>h</code>, <code>x</code>, <code>rz</code> and <code>cx</code> (Nam's gate
                             set); then <code>Graph::greedy_optimize</code> applies every rewrite from Quartz's
@@ -2008,8 +2016,7 @@
                             <code>rz(a) q[0]; cx q[0],q[1]; rz(b) q[0];</code> stays three gates. The ECC set
                             (equivalent subcircuits on 3 qubits with 2 symbolic parameters, up to 3 gates) is
                             generated and verified by Quartz when the image is built, and the build fails unless
-                            its sha256 matches the recorded one; the 4-gate set took 15 minutes on 32 cores and
-                            removed no more gates on eight test circuits. Quartz's search
+                            its sha256 matches the recorded one. Quartz's search
                             (<code>Graph::optimize</code>), which stops on wall-clock time, and its rotation
                             merging are not offered. Angles go to Quartz as exact fractions of π and come back
                             the same way, so 0.3 appears as <code>pi*238732414637843/2500000000000000</code>;
@@ -2072,15 +2079,7 @@
             <section id="reading">
                 <h2>Reading the results</h2>
                 <p>
-                    A finished run shows five tabs. The first Tab stop of the page is <em>Skip to the
-                    workspace</em>. Login, History, Auto-Gen and the Quirk view open as dialogs that keep
-                    the keyboard inside them until they close (Escape, or their Close or Cancel button), and
-                    focus then returns to the button that opened them. When a run finishes, focus moves to
-                    the heading of its results and a screen reader reads the first lines of the headline,
-                    or the error. Badges and labels with a tooltip take one Tab stop per table row; Left and
-                    Right arrows move between them, and a tooltip stays open while the pointer is on it. The
-                    Backends table and the tables of this manual take a Tab stop of their own; when one is
-                    wider than its box, Left and Right arrows scroll it.
+                    A finished run shows five tabs.
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
@@ -2092,6 +2091,17 @@
                         <tr><td>Exports</td><td>Figures and tables of the run, and the RO-Crate export.</td></tr>
                     </tbody>
                 </table></div>
+                <p>
+                    The first Tab stop of the page is <em>Skip to the
+                    workspace</em>. Login, History, Auto-Gen and the Quirk view open as dialogs that keep
+                    the keyboard inside them until they close (Escape, or their Close or Cancel button), and
+                    focus then returns to the button that opened them. When a run finishes, focus moves to
+                    the heading of its results and a screen reader reads the first lines of the headline,
+                    or the error. Badges and labels with a tooltip take one Tab stop per table row; Left and
+                    Right arrows move between them, and a tooltip stays open while the pointer is on it. The
+                    Backends table and the tables of this manual take a Tab stop of their own; when one is
+                    wider than its box, Left and Right arrows scroll it.
+                </p>
                 <h3>Summary</h3>
                 <p>
                     The headline says how many backends returned a result, names failed ones as Offline,
@@ -2099,17 +2109,17 @@
                     the pairs that differ; an inconclusive pair counts as neither agreement nor difference.
                     A statevector pair differs when it disagrees (<a href="#taxonomy">Agreement
                     classification</a>); a measured pair differs when it is distinguishable beyond shot
-                    noise or a single-bit marginal differs. The headline takes the first of these forms
+                    noise or a <a href="#stat">single-bit marginal</a> differs. The headline takes the first of these forms
                     that fits:
                 </p>
                 <ul>
                     <li><strong>Named backends.</strong> One set of at most four backends, fewer than half of
                         those with a result, is the only set of that size present in every differing pair.
-                        Those backends are named with how many they differ from ("Qibo differs from all 13
-                        other backends"; "Qrisp differs from 7 of 13 other backends"), backends in the set
-                        that agree with each other together ("PL Default and PL Lightning agree with each
-                        other and differ from every other backend (12)"), followed by a sentence about the
-                        rest, among which no pair differs.</li>
+                        Those backends are named with how many they differ from ("Backend A differs from all
+                        13 other backends"; "Backend A differs from 7 of 13 other backends"), backends in the
+                        set that agree with each other together ("Backends A and B agree with each other and
+                        differ from every other backend (12)"), followed by a sentence about the rest, among
+                        which no pair differs.</li>
                     <li><strong>Groups.</strong> The backends that differ from at least one other split into
                         two to four groups, at least two of them with two or more members, with no differing
                         pair inside a group and every compared pair between groups differing. The groups are
@@ -2122,26 +2132,27 @@
                     <li><strong>Spread.</strong> The backends that differ from more than half of those they
                         were compared with are named, those that agree with each other together and the
                         groups with the largest difference first, up to four, and the rest in a sentence of
-                        their own ("Qrisp and TorchQuantum also differ from more than half of the backends
-                        they were compared with"); then the differing pairs among the others.</li>
+                        their own ("Backends C and D also differ from more than half of the backends they
+                        were compared with"); then the differing pairs among the others.</li>
                 </ul>
                 <p>
                     Each named backend or group carries the size of its difference, measured against the
                     backends the headline does not name, so a pair of two named backends does not set it:
-                    the lowest label-aligned fidelity (statevector), or the median and range of the total
+                    the lowest <a href="#formulas">label-aligned fidelity</a> (statevector), or the median and range of the total
                     variation (measured). When groups differ, the size is taken over the pairs between
                     groups. In measured mode, a named backend that differs from fewer than half of the
                     others and is consistent with all the rest gets a caveat: with many pairs tested, one
                     backend's unusual sample can differ from a few others by chance. In simulation with
                     every backend correct at 8,200 shots, the full-distribution test flagged a pair in
                     0.6–1.1% of 14-backend runs, and with the single-bit marginal tests 3.9–4.8% of runs
-                    showed a flag. A multi-run report counts runs in the same sentences ("all 4 PL Default
+                    showed a flag. A multi-run report counts runs in the same sentences ("all 4 Backend A
                     runs").
                 </p>
                 <p>
-                    A measured pair that is distinguishable under Benjamini–Yekutieli but not under Holm's
-                    family-wise correction, with no differing single-bit marginal, is listed on its own line
-                    as significant under BY only and does not shape the headline. When one backend is in
+                    A measured pair that is distinguishable under Benjamini–Yekutieli but not under
+                    <a href="#formulas">Holm's family-wise correction</a>, with no differing single-bit
+                    marginal, is listed on its own line as significant under
+                    <a href="#formulas">BY only</a> and does not shape the headline. When one backend is in
                     every such pair (two or more), the headline names it. "No single-bit marginal differs"
                     appears only when the marginal test ran, which needs keys of two or more bits. In
                     measured mode the full-distribution and marginal counts are given separately, with the
@@ -2165,8 +2176,8 @@
                     as detail; pairs whose single-bit marginals differ have their own block; inconclusive
                     pairs are split by cause; not comparable pairs carry the reason. Lists of differing pairs
                     are never folded and are ordered by the backend they share; lists of agreeing pairs over
-                    twelve items are folded. Power is shown to three decimals with the α/(m·c_m), m and c_m
-                    it was computed at. A collapsible section lists the analysis version and git commit,
+                    twelve items are folded. Power is shown to three decimals with the
+                    <a href="#formulas">α/(m·c_m)</a>, m and c_m it was computed at. A collapsible section lists the analysis version and git commit,
                     then per-backend run details.
                 </p>
                 <p>
@@ -2180,7 +2191,7 @@
                     A run on a GPU carries a GPU tag under its name (hover for the GPU), and the header says
                     so when any run was on a GPU. Each column uses one number format: fixed decimals chosen
                     so its smallest value shows three significant digits, or scientific notation throughout
-                    when a value is below 1e-6. After "Caveats", the header names conditions in this run that
+                    when a value is below 1e-6 or at least 1e9. After "Caveats", the header names conditions in this run that
                     can bias a comparison (backends ran at the same time, other jobs on the server,
                     throttling, unstable repetitions, CPUs of different speeds, one timed run per backend);
                     "Measurement notes" gives the details. With Timing repeats above 1, each time cell shows
@@ -2272,7 +2283,10 @@
                     band. On the right, the <strong>Export</strong> panel lists what the RO-Crate will
                     contain. The report (<code>results.json</code>), circuits and provenance are always
                     included; <em>Add to export</em> adds the view with its settings and its own formats, and
-                    the pencil reloads an added view to change it. One export holds at most 60 items
+                    the pencil reloads an added view to change it. A figure is exported as SVG by default,
+                    and as PDF or PNG; a figure view that also has a table adds LaTeX and CSV of its data.
+                    A table view offers LaTeX and CSV by default, and Markdown, HTML and XLSX. One export
+                    holds at most 60 items
                     (<code>limits.max_export_items</code>). Presets (Paper figures, Data for analysis,
                     Everything, Nothing extra) fill the list; the preset and the author and affiliation under
                     <em>Credits</em> are remembered in this browser. <em>Files from your selection</em> lists
@@ -2297,6 +2311,8 @@
                         <strong>Rank–probability</strong>.</li>
                 </ul>
                 <p>
+                    The four measured views have a <strong>Colour</strong> setting under <em>More</em>:
+                    <em>By backend</em> (the default) gives each backend its own colour, and
                     <em>Highlight disagreeing</em> colours the backends whose pair with the reference is a
                     disagreement and greys the rest. Figures are drawn on the server: from its copy of a run
                     made in this session while the copy is kept, otherwise from the fields of the browser
@@ -2327,6 +2343,28 @@
                     of a compile-only run. An experiment shows its pair counts, by assessment in measured
                     mode and by label group in statevector mode, and the bundle download.
                 </p>
+                <h3>When backends disagree</h3>
+                <p>
+                    A differing pair shows that one of the two backends is wrong, or that they read the
+                    circuit differently. To find which:
+                </p>
+                <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
+                    <li>On the <strong>Agreement</strong> tab, click the pair's cell and read its label,
+                        metrics, tolerances and statistical test (<a href="#taxonomy">Agreement
+                        classification</a>, <a href="#formulas">Metric formulas</a>).</li>
+                    <li>On the <strong>Circuits</strong> tab, compare the submitted circuit, the circuit
+                        the API dispatched to each backend and the circuit each backend executed, with the
+                        line diff and <strong>Compare angles by value</strong>.</li>
+                    <li>Read each backend's <code>preprocessing_applied</code> list, in the pair's
+                        evidence or under the per-backend run details at the end of the Summary
+                        (<a href="#preprocessing">Circuit preprocessing</a>).</li>
+                    <li>Rerun with <em>Apply SDK Preprocessing</em> off, with another sampling seed, or
+                        with more shots; for an inconclusive pair, use the shot count the Summary
+                        recommends (<a href="#stat">The shot-noise statistical test</a>).</li>
+                    <li>Check the circuit against a reference computed independently of the backends, for
+                        example by hand for a small circuit; the <a href="#selftest">self-test</a> does this
+                        for its own circuits.</li>
+                </ol>
             </section>
 
             <section id="endpoints">
