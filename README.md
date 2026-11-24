@@ -147,8 +147,7 @@ distribute their images (`THIRD_PARTY_NOTICES.md`). `qrosetta build NAME` builds
 package's build kit (see "Build the images yourself").
 cuQuantum also needs an NVIDIA GPU; without one it is listed as unavailable and never dispatched.
 
-Sizes are in GB (10^9 bytes), measured on 2026-11-04 for the 2.0.0rc4 images. "Size after
-`pull`" is the uncompressed layer size with the base-image layers counted once and every other
+Sizes are approximate, in GB (10^9 bytes), for the release images. "Size after `pull`" is the uncompressed layer size with the base-image layers counted once and every other
 layer once per image. "Download" is the sum of the distinct compressed layers the registry sends.
 A checkout that builds all 24 images uses about 19 GB, because local builds share more layers.
 
@@ -182,6 +181,23 @@ qrosetta run algorithm:ghz:3 -m statevector,measured
 qrosetta show summary                 # the server's verdicts for the newest result
 qrosetta export crate                 # its RO-Crate
 ```
+
+To run your own circuit, write it as OpenQASM 2.0 in a file and pass the file; `-m` chooses
+`statevector` (the default), `measured`, `compile`, or a comma list of them, one job each:
+
+```bash
+qrosetta run mycircuit.qasm -m measured --shots 8200
+```
+
+On the page, paste OpenQASM 2.0 into the Editor or load a file with **Import QASM**, then press
+Run.
+
+Each `run` saves its results in a new directory under `./qrosetta-results`: `plan.json`, and per
+job `request.json`, `job.json`, `report.json`, `summary.json`, on a local stack `ro-crate.zip`, a
+`SHA256SUMS` and a `STATUS`. The manual's "Command-line tool" section describes the layout. The
+server keeps a finished job for 24 hours by default on a local stack (30 minutes on other
+servers), so the page can reopen it under *Earlier runs from this browser*; a saved copy, an
+account's run history or an exported crate keeps it beyond that.
 
 `selftest` compares every started backend with answers computed independently of any SDK and
 checks the host conditions that affect timings. It exits 0 when no check fails and names each
@@ -291,8 +307,8 @@ leaves it alone. The project is `QROSETTA_PROJECT` (default `qsimulators`).
 
 Limits per container: each runner 1 CPU and 1 GiB, each compile-only service 2 CPUs and 2 GiB,
 the API 0.5 CPU and 2 GiB, nginx 0.2 CPU and 128 MiB. Idle after a few hours of use, the 24
-containers of `full` used 3.6 GiB and the five of `minimal` 1.0 GiB, page cache included
-(`qrosetta status`, 2026-11-04). On standby the containers hold no memory.
+containers of `full` take about 3.6 GiB and the five of `minimal` about 1.0 GiB, page cache
+included, as `qrosetta status` reports them. On standby the containers hold no memory.
 
 The API keeps finished jobs so that the page and `qrosetta` can fetch their reports and crates.
 `start` and `status` print the four bounds, which are set under `[lifecycle]` in the config file:
@@ -306,11 +322,11 @@ The API keeps finished jobs so that the page and `qrosetta` can fetch their repo
 
 When there are more than `jobs_kept` jobs, or their memory exceeds `job_memory`, the oldest jobs
 that finished more than 30 minutes ago are removed; a sweep every 10 minutes applies the bounds.
-Jobs younger than 30 minutes are never removed, so a burst of large jobs can take the API past
+These two bounds never remove a job that finished less than 30 minutes ago, so a burst of large jobs can take the API past
 `job_memory` until they age. A kept job holds about 0.3 MiB of API memory for a 5-qubit circuit on
 5 backends, 1.3 MiB for an 18-qubit statevector circuit on 14 backends, and 21 MiB for a
 24-qubit measured circuit on 14 backends at 8,200 shots with a spread-out distribution. One
-18-qubit statevector job on 14 backends takes 79 MB of job storage. Stopping or recreating the
+18-qubit statevector job on 14 backends takes about 78 MB of job storage. Stopping or recreating the
 API container removes every kept job; save a run to keep it.
 
 ```bash
@@ -380,15 +396,16 @@ a shared server; a local stack runs without it. Braket and ProjectQ are disabled
 `rosetta-api/config.py` because of persistent errors; enabling one means setting `enabled=True`
 there and adding it to `scripts/safe_boot.sh`.
 
-To deploy a shared server, the repository has the scripts for the authors' own instance
-(Kubernetes mode on CSC Rahti with `scripts/rahti_push.sh`, a frontend on Google Cloud Run with
-`scripts/deploy_frontend.sh`), which need adapting to another cluster. Outside local mode the API
-refuses to start without `SECRET_KEY`.
+For a shared server, the repository has Kubernetes manifests and deployment scripts (`infra/`,
+`scripts/`), which need adapting to a given cluster. Outside local mode the API refuses to start
+without `SECRET_KEY`.
 
 ## Command reference
 
 `qrosetta help all` lists every command and `qrosetta COMMAND --help` gives its options and
-examples. Commands marked experimental may change between minor releases.
+examples. Commands marked experimental may change in any release, and so may JSON output whose
+schema ends in `@0`; the other commands keep their names, exit codes and non-experimental flags
+within major version 2.
 
 | Command | Purpose |
 |---|---|
@@ -460,8 +477,8 @@ and what to attach. Contributors follow the
 Each release is a git tag, and
 [CHANGELOG.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/CHANGELOG.md) lists what
 changed. `v1.0.0` (June 2026) was the first public snapshot. Do not reuse its results: its Qrisp
-adapter returned an all-zero state and all-zero counts when the SDK call failed (fixed in July
-2026), and the bit-order labels of several adapters were corrected after it.
+adapter returned an all-zero state and all-zero counts when the SDK call failed, and the
+bit-order labels of several adapters were corrected after it.
 
 ## Citing
 

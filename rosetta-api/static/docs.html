@@ -2387,7 +2387,9 @@
                     </tbody>
                 </table></div>
                 <p>
-                    "Local stack" means one started from the repository's compose file. Beyond the job count
+                    "Local stack" means one started with <code>qrosetta start</code>, from a checkout or
+                    from the installed package (which writes its own compose file), or with
+                    <code>docker compose</code> from the repository's compose file. Beyond the job count
                     or the memory budget, checked whenever a job finishes, the oldest jobs that finished more
                     than 30 minutes ago (<code>limits.job_evictable_after_sec</code>) are removed first, so on
                     a busy server a job can go before its retention time. Younger jobs are kept even over the
@@ -2424,9 +2426,9 @@
                         <tr><td><code>GET /jobs/{job_id}/circuit-texts</code></td><td>The panes of the Circuits tab per circuit (<code>circuits</code>; <code>?task=</code> picks one circuit of a playlist) in the tab's order, with their ids (<code>input</code>, <code>dispatched:&lt;group&gt;</code>, <code>executed:&lt;result key&gt;</code>, <code>compile-input</code>, <code>compiled:&lt;compile key&gt;</code>). Each has its text and the fields a share link serves (transforms, gate metrics, status, SDK versions; no error text, timings or outputs). Same 404 and 409 cases; 400 for <code>task</code> on a single-circuit job. 120 requests a minute.</td></tr>
                         <tr><td><code>GET /jobs/{job_id}/publication/artifacts</code></td><td>The figures and tables the server copy offers: each one's <code>id</code> (the <code>artifact_id</code> to render), label, group, formats and caption at default parameters; <code>?task=</code> picks a playlist circuit. <code>POST /publication/artifacts</code> does the same for a report in the body. Rendering an id the report does not offer is a 404 whose detail lists the ids it does offer.</td></tr>
                         <tr><td><code>GET /publication/views</code></td><td>Every export view of the Exports tab, in order: the artifact ids it renders with the formats the render routes take, the formats an export item of the view takes, and its parameters (type, allowed values or range, default; a null default is worked out from the report, as <code>default_when_null</code> says). 120 requests a minute.</td></tr>
-                        <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy. Optional body: <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. <code>publication_artifacts.items</code> lists views as <code>{"view", "params", "formats"}</code>: each figure goes to <code>figures/&lt;name&gt;.&lt;format&gt;</code> with <code>figures/&lt;name&gt;.spec.json</code> (the view, its parameters, the caption and the analysis version), each table to <code>tables/&lt;name&gt;.&lt;ext&gt;</code>, the glossary to <code>reference/</code>. The name is the view id followed by every parameter that differs from its default. A playlist crate draws each view for every circuit under <code>figures/&lt;circuit&gt;/</code>. An unknown view, parameter or format is a 400. Same 404 and 409 cases; <code>?gated=true</code> as for the report.</td></tr>
+                        <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy. Optional body: <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. <code>publication_artifacts.items</code> lists views as <code>{"view", "params", "formats"}</code>: each figure goes to <code>figures/&lt;name&gt;.&lt;format&gt;</code> with <code>figures/&lt;name&gt;.spec.json</code> (the view, its parameters, the caption and the analysis version), each table to <code>tables/&lt;name&gt;.&lt;ext&gt;</code>, the glossary to <code>reference/</code>. The name is the view id followed by every parameter that differs from its default. A playlist crate draws each view for every circuit under <code>figures/&lt;circuit&gt;/</code>. A view or format name the request schema does not know is a 422; an unknown parameter, a bad parameter value, or a known format the view does not take is a 400. Same 404 and 409 cases; <code>?gated=true</code> as for the report.</td></tr>
                         <tr><td><code>POST /jobs/{job_id}/publication/render</code></td><td>One figure or table drawn from the server copy (body: <code>artifact_id</code>, <code>format</code>, <code>scale</code>, <code>params</code>, and for a playlist <code>task</code>, the circuit's index). Same 404 and 409 cases; 400 for a parameter or format the view does not take. <code>POST /publication/render</code> takes a report in the body instead.</td></tr>
-                        <tr><td><code>POST /export</code></td><td>An RO-Crate ZIP built from a report in the request body, within the 1,048,576-byte request limit. Used for runs loaded from history and when the server copy has expired; it cannot include statevectors the browser copy does not hold.</td></tr>
+                        <tr><td><code>POST /export</code></td><td>An RO-Crate ZIP built from a report in the request body, within the 1,048,576-byte request limit. The body holds the same options as <code>POST /jobs/{job_id}/export</code> plus <code>results</code>, the report. Used for runs loaded from history and when the server copy has expired; it cannot include statevectors the browser copy does not hold.</td></tr>
                         <tr><td><code>POST /history/runs/from_job/{job_id}</code></td><td>Saves a finished single or playlist job to the signed-in user's history from the server copy (optional body <code>{"run_name": "..."}</code>). 201 with the saved run; saving the same job again returns that run with 200, also after the job has expired. 404 if the job is unknown or expired and this account has not saved it; 409 if it has not finished or is an experiment; 403 if another account started it. A job submitted with a sign-in belongs to that account; one submitted without can be saved by any account that holds its id. <code>GET /history/runs</code> lists each run's <code>job_id</code> (null for a report uploaded with <code>POST /history/runs</code>).</td></tr>
                         <tr><td><code>POST /history/runs/{run_id}/share-links</code></td><td>Creates a read-only link to one of your saved runs (optional body <code>{"expires_in_days": 1..90, "label": "..."}</code>, default 30 days; the label is at most 100 characters and shown only to you). 201 with the link's id, expiry and token; the token appears only in this response. 404 if the run is not yours; 409 when the run already has 10 active links.</td></tr>
                         <tr><td><code>GET /history/runs/{run_id}/share-links</code></td><td>The links to one of your saved runs, with creation, expiry and revocation times, without tokens.</td></tr>
@@ -2448,8 +2450,11 @@
                 <p>
                     Every crate's <code>provenance.json</code> records <code>report_source</code>, set by the
                     export route and never read from the report: <code>server_job</code> for the server's copy
-                    of a job, <code>upload</code> or <code>not_recorded</code> for a saved run by how it was
-                    saved, and <code>client_supplied</code> for <code>POST /export</code>, whose contents (git
+                    of a job; for a saved run, <code>server_job</code> when it was saved from a job
+                    (<code>POST /history/runs/from_job/{job_id}</code>), <code>upload</code> when its report
+                    was uploaded (<code>POST /history/runs</code>), and <code>not_recorded</code> when the
+                    stored report names neither; and <code>client_supplied</code> for <code>POST
+                    /export</code>, whose contents (git
                     commit, versions, circuit texts) are as the requester sent them. The same value is
                     <code>report_source</code> in <code>results.json</code> and the
                     <code>#report-source</code> PropertyValue of the crate and of its agreement analysis. For
@@ -2474,7 +2479,8 @@
                         record per pair; <code>n_shots</code> is present only in measured mode;</li>
                     <li>a playlist report (<code>/run_batch_suite</code>): <code>mode</code> and
                         <code>benchmark_summary</code>, one single-circuit report per task in task order, each
-                        with <code>task_name</code> (the name followed by "(<em>n</em>q)"),
+                        with <code>task_name</code> (the name followed by "(<em>n</em>q)", and by
+                        " [MQT Bench]" or " [QASMBench]" for a bundled benchmark circuit),
                         <code>task_qubits</code> and <code>task_request</code> (the task as sent, including its
                         <code>name</code>); a task that failed before dispatch is
                         <code>{task_name, task_qubits, task_request, error}</code>;</li>
@@ -2560,10 +2566,8 @@
                     <code>differs</code> (the badge), <code>differs_by_only</code>, <code>agrees</code> and
                     <code>inconclusive</code>. <code>divergence_report.backend_verdicts</code> holds the
                     per-backend counts of the Backends table and <code>headline_model</code>, the backends the
-                    Summary headline names. Reports from analysis versions before
-                    <code>divergence-2026.10.27.1</code> lack these fields; the three summary routes above
-                    compute them for any report with this server's rule, and the page uses them for such
-                    reports.
+                    Summary headline names. For a report without these fields, the three summary routes
+                    above compute them with this server's rule, and the page uses the result.
                 </p>
                 <p>
                     Live statuses in <code>runner_statuses</code> use the same keys as the results: a backend
@@ -2602,9 +2606,9 @@
                 <div class="table-scroll"><table>
                     <thead><tr><th>Routes</th><th>Default limit</th><th><code>limits</code> field</th></tr></thead>
                     <tbody>
-                        <tr><td>Runs, exports, circuit lookups (exporting a saved run counts as an export)</td><td>10 a minute per account; 60 a minute per address</td><td><code>run_rate_limit</code>, <code>run_rate_limit_per_address</code></td></tr>
-                        <tr><td>Rendering a figure or table</td><td>120 a minute per account; 240 a minute per address</td><td><code>render_rate_limit</code>, <code>render_rate_limit_per_address</code></td></tr>
-                        <tr><td>Saving, renaming or deleting saved circuits and runs</td><td>60 a minute per account; 240 a minute per address</td><td><code>history_write_rate_limit</code>, <code>history_write_rate_limit_per_address</code></td></tr>
+                        <tr><td>Runs, exports, circuit lookups (exporting a saved run counts as an export)</td><td>10 a minute per account (per address without a sign-in); at most 60 a minute per address in total</td><td><code>run_rate_limit</code>, <code>run_rate_limit_per_address</code></td></tr>
+                        <tr><td>Rendering a figure or table</td><td>120 a minute per account (per address without a sign-in); at most 240 a minute per address in total</td><td><code>render_rate_limit</code>, <code>render_rate_limit_per_address</code></td></tr>
+                        <tr><td>Saving, renaming or deleting saved circuits and runs</td><td>60 a minute per account; at most 240 a minute per address in total</td><td><code>history_write_rate_limit</code>, <code>history_write_rate_limit_per_address</code></td></tr>
                         <tr><td>Full-report and bundle downloads</td><td>30 a minute</td><td>—</td></tr>
                         <tr><td>Creating a share link</td><td>20 a minute</td><td>—</td></tr>
                         <tr><td>Signing in (<code>POST /auth/token</code>, failed attempts included)</td><td>10 a minute per address</td><td><code>login_rate_limit</code></td></tr>
@@ -2623,9 +2627,17 @@
                     save beyond them is refused with 409.
                 </p>
                 <p>
-                    <code>POST /auth/token</code> returns <code>expires_in</code>: the token is valid for that
-                    many seconds (1,800 by default), with no refresh token; after that, authenticated routes
-                    return 401 and the script signs in again. <code>POST /auth/logout</code> signs the account
+                    A script signs in with <code>POST /auth/token</code>, an OAuth2 password grant: the body
+                    is form-encoded (<code>application/x-www-form-urlencoded</code>) with the fields
+                    <code>username</code> (the account's email) and <code>password</code>; a JSON body is
+                    refused with 422. For example, <code>curl --data-urlencode username=EMAIL
+                    --data-urlencode password=PASSWORD http://localhost:8080/auth/token</code>. The answer
+                    is <code>{access_token, token_type, expires_in}</code>; the script sends
+                    <code>Authorization: Bearer <em>access_token</em></code> with each later request, and
+                    a JSON body with <code>Content-Type: application/json</code> (for example
+                    <code>curl -H 'Content-Type: application/json' -d @request.json</code>). The token is
+                    valid for <code>expires_in</code> seconds (1,800 by default), with no refresh token;
+                    after that, authenticated routes return 401 and the script signs in again. <code>POST /auth/logout</code> signs the account
                     out everywhere: every token issued to it until then gets 401. <code>POST
                     /auth/password</code> with <code>current_password</code> and <code>new_password</code>
                     changes the password, ends every earlier token the same way, and answers with a new
@@ -2644,11 +2656,13 @@
                     any server. It needs Python 3.11 or later and uses the standard library only. Install it
                     from PyPI (<code>pipx install qrosetta</code>) or run <code>./qrosetta</code> from a
                     checkout; the host requirements and setup steps per distribution are in the
-                    <a href="https://github.com/SeQuSoS-Project/QRosetta#getting-started">README</a>.
+                    <a href="https://github.com/SeQuSoS-Project/QRosetta#installing-from-pypi">README</a>.
                     <code>qrosetta help all</code> lists every command and <code>qrosetta help
                     <em>command</em></code> (or <code>--help</code>) gives its flags and examples. Commands
-                    marked experimental print a notice and may change their behaviour and JSON (schema
-                    <code>@0</code>).
+                    marked experimental print a notice and may change their behaviour and JSON in any
+                    release. The other commands keep their names, exit codes and the flags not marked
+                    experimental within major version 2; their JSON is stable only where its schema is at <code>@1</code> (see
+                    <a href="#cli-json">JSON output</a>).
                 </p>
                 <p>
                     Global options, accepted anywhere on the line: <code>--json</code>, <code>--server
@@ -2725,11 +2739,50 @@
                     on the server; <code>qrosetta wait job:<em>ID</em></code> saves it later. A job the server
                     answers 404 for is lost (exit 14).
                 </p>
+                <p>
+                    Each <code>run</code> creates one directory under <code>./qrosetta-results</code> (or
+                    <code>--results-dir</code>, <code>QROSETTA_RESULTS_DIR</code>, <code>[results]
+                    dir</code>; <code>-o DIR</code> names it exactly), called
+                    <code><em>YYYYMMDD-HHMMSS</em>Z-<em>name</em></code> after the UTC start time and
+                    <code>--name</code> or the circuit's name. It holds:
+                </p>
+                <ul>
+                    <li><code>plan.json</code>: the plan request with the source of each setting, the
+                        server's versions and the planned requests, which <code>run --request</code>
+                        replays;</li>
+                    <li>one directory per job, <code><em>mode</em>-<em>id8</em></code>
+                        (<code>statevector</code>, <code>measured</code>, <code>compile</code> or
+                        <code>experiment-<em>mode</em></code>, then the first 8 characters of the job id),
+                        with <code>request.json</code> (the request as sent), <code>job.json</code> (the
+                        final job envelope without its results, the server and how the save went),
+                        <code>report.json</code> and <code>summary.json</code> by default,
+                        <code>ro-crate.zip</code> on a local stack whose server offers gated saves or
+                        with <code>--crate</code>, <code>circuit-texts.json</code> with <code>--save
+                        circuits</code>, an experiment's <code>bundle.zip</code> in place of the report, a
+                        <code>SHA256SUMS</code> over these files, and <code>STATUS</code>, written last:
+                        <code>complete</code>, <code>complete: minimal</code>, <code>partial:
+                        </code><em>reasons</em>, <code>crate-deferred</code>, <code>job-failed</code> or
+                        <code>job-lost</code>;</li>
+                    <li><code>SHA256SUMS</code> over <code>plan.json</code>, written once every job is
+                        saved, when the parent directory's <code>latest</code> link is moved to this
+                        directory.</li>
+                </ul>
+                <p>
+                    <code>wait</code> saves into the job directories <code>run --detach</code> created;
+                    <code>export crate</code> and <code>export report</code> write
+                    <code>ro-crate.zip</code> and <code>report.json</code> into the job's directory unless
+                    <code>-o</code> names another path, and refresh its <code>SHA256SUMS</code>.
+                    <code>selftest</code> writes <code><em>time</em>-selftest</code> with
+                    <code>selftest.json</code> beside its job directories. A result reference such as
+                    <code>--result latest</code>, <code>job:<em>ID</em></code> or a path reads these
+                    directories.
+                </p>
                 <h3>Exit codes</h3>
                 <p>
                     Codes 3 to 9 mean the job ran and its results exist; 10 and above are errors, and the
-                    last line of the output names the fix. With several codes the most serious wins: 1, 2,
-                    12, 11, 13, 14, 10, 15, 16, 17, then 9, 5, 6, 7, 3, 8, 4, 0. A difference between backends
+                    last line of the output names the fix. With several codes the most serious wins: the
+                    signal codes 129, 130, 141 and 143 first, then 1, 2, 12, 11, 13, 14, 10, 15, 16, 17,
+                    then 9, 5, 6, 7, 3, 8, 4, 0. A difference between backends
                     is a result: <code>run</code> and <code>wait</code> exit 0 unless <code>--fail-on</code>
                     names the outcome.
                 </p>
@@ -2746,8 +2799,8 @@
                         <tr><td>7</td><td><code>wait_timeout</code></td><td><code>--wait-timeout</code> reached; the job is still running.</td></tr>
                         <tr><td>8</td><td><code>not_established</code></td><td><code>--fail-on</code> matched an inconclusive or no-comparison outcome.</td></tr>
                         <tr><td>9</td><td><code>selftest_failed</code></td><td>A self-test check failed.</td></tr>
-                        <tr><td>10</td><td><code>refused</code></td><td>The server answered 400 or 413, the plan has a problem, or the request is over the body limit.</td></tr>
-                        <tr><td>11</td><td><code>unreachable</code></td><td>No answer (connection, DNS, TLS), or the local stack is not running.</td></tr>
+                        <tr><td>10</td><td><code>refused</code></td><td>The server answered 400, 409, 413, 422 or another client error not listed under 13, 14 or 15, the plan has a problem, or the request is over the body limit.</td></tr>
+                        <tr><td>11</td><td><code>unreachable</code></td><td>No answer (connection, DNS, TLS), a server error other than 503 (500, 502, 504), or the local stack is not running.</td></tr>
                         <tr><td>12</td><td><code>incompatible</code></td><td>API levels, a missing feature or field, or a release mismatch.</td></tr>
                         <tr><td>13</td><td><code>auth</code></td><td>Not signed in, token expired, 401 or 403.</td></tr>
                         <tr><td>14</td><td><code>not_found</code></td><td>Unknown or expired job, run, link, example, key, file or result.</td></tr>
@@ -2831,7 +2884,7 @@
                     source and prints the command that stops that project. <code>start</code> never stops a
                     program that holds a port.
                 </p>
-                <h3>JSON output</h3>
+                <h3 id="cli-json">JSON output</h3>
                 <p>
                     With <code>--json</code> every command writes one JSON object to stdout, also on failure:
                     <code>{schema, cli_version, server, ok, exit_code, outcome, data, warnings, error}</code>.
@@ -2841,8 +2894,14 @@
                     <code>{code, reason, message, hint, http_status, detail}</code>, with the exit code's name
                     as <code>code</code>, a snake_case <code>reason</code> and the server's
                     <code>detail</code> verbatim; outcomes (exit 3 to 9) leave <code>error</code> null and
-                    <code>data</code> complete. Within a schema version fields are only added, so a consumer
-                    should ignore fields it does not know. Server objects embedded in <code>data</code> (from
+                    <code>data</code> complete. Within a schema version at <code>@1</code> or above, fields are
+                    only added, so a consumer should ignore fields it does not know. A schema at
+                    <code>@0</code> may change in any release: every experimental command writes one, and so
+                    do some stable commands whose JSON is not yet fixed (for example
+                    <code>doctor@0</code>, <code>backends@0</code>, <code>start@0</code>). The stable
+                    schemas are <code>run-result</code>, <code>plan</code>, <code>job</code>,
+                    <code>jobs</code>, <code>status</code>, <code>images</code>, <code>selftest</code>,
+                    <code>info</code>, <code>version</code>, <code>summary</code> and <code>export</code>. Server objects embedded in <code>data</code> (from
                     <code>/config</code>, <code>/runners</code>, the summary) carry their own versions; the
                     report itself is never embedded, and files are referenced by absolute path. The JSON
                     Schemas ship with the package in <code>qrosetta_cli/schemas/</code>. Without
@@ -2862,8 +2921,20 @@
                     under its run name. Experiments are never saved; their result is the bundle you download.
                     Runs started through the API are not saved automatically; save one with
                     <code>POST /history/runs/from_job/{job_id}</code> (see <a href="#endpoints">Reports and
-                    exports</a>) while the server still holds it. Without an account, results exist only in
-                    your browser for that session.
+                    exports</a>) while the server still holds it.
+                </p>
+                <p>
+                    Without an account, nothing is saved permanently on the server. The server keeps each
+                    finished job for its retention time (24 hours by default on a local stack, 30 minutes
+                    on other servers, fewer when its job limits are reached; see <a href="#endpoints">How
+                    long the server keeps a job</a>), and this browser lists the jobs it submitted under
+                    <em>Earlier runs from this browser</em> for that time (see
+                    <a href="#quickstart">Quickstart</a>). To keep a result longer, download its report or
+                    RO-Crate, turn on <strong>Auto-save results to a folder</strong>, or sign in and save
+                    it. <code>qrosetta run</code> and <code>wait</code> save each job's report, summary
+                    and, on a local stack, its crate under <code>./qrosetta-results</code> (see
+                    <a href="#cli">Command-line tool</a>), with or without an account. A restart of the
+                    API container loses every job it holds.
                 </p>
                 <p>
                     <strong>Your Run History</strong> lists past runs. Rename them, download their stored
@@ -2873,8 +2944,8 @@
                     opening one would replace the view of the run. A saved run opened from History has the
                     same heading as when it ran, with its mode and shot count. A run uploaded with
                     <code>POST /history/runs</code>, instead of saved from this server's job, is tagged
-                    <strong>Uploaded</strong> in the Viewing Past Run banner, and one saved before the server
-                    recorded the source is tagged <strong>Source not recorded</strong>; the History list
+                    <strong>Uploaded</strong> in the Viewing Past Run banner, and one whose stored report
+                    names no source is tagged <strong>Source not recorded</strong>; the History list
                     itself does not show the source.
                 </p>
                 <h3>Share links</h3>
@@ -2931,8 +3002,8 @@
                     fixed list, so a name the page accepts is accepted when the run is saved. A saved run or
                     circuit name needs at least one visible character: spaces, joiners, variation selectors,
                     combining marks on their own (such as U+0301), format characters, the braille blank
-                    U+2800 and the object replacement character U+FFFC do not count. A name saved before these
-                    checks is shown and exported with the refused characters removed.
+                    U+2800 and the object replacement character U+FFFC do not count. A stored name that holds
+                    refused characters is shown and exported without them.
                 </p>
                 <h3>Autosave to a folder</h3>
                 <p>
@@ -2984,6 +3055,20 @@
 
             <section id="glossary">
                 <h2>Glossary</h2>
+                <h3>Terms</h3>
+                <div class="table-scroll"><table>
+                    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td>Statevector mode</td><td>Each backend returns the final state of the circuit, one complex amplitude per basis state, and pairs are compared by fidelity; terminal measurements are removed first (see <a href="#modes">Run modes</a>).</td></tr>
+                        <tr><td>Measured mode</td><td>Each backend samples the circuit's measurements a number of times (shots) and returns how often each outcome occurred; pairs are compared with distances and statistical tests.</td></tr>
+                        <tr><td>Fidelity</td><td>|⟨a|b⟩|², the squared overlap of two normalised statevectors: 1 for the same state up to a global phase, 0 for orthogonal states. A pair agrees when it is at least 1 − 10⁻⁵ by default.</td></tr>
+                        <tr><td>Global phase</td><td>A factor e<sup>iφ</sup> that multiplies every amplitude of a state. No measurement can detect it, so it does not count as a difference; the report records it as the phase offset arg⟨a|b⟩.</td></tr>
+                        <tr><td><code>lsb</code>, <code>msb</code> (bit order)</td><td>Whether qubit 0 (or classical bit 0) is the least or the most significant bit of a statevector index or a counts key. Backends declare their order, and an <code>lsb</code> backend is compared with an <code>msb</code> backend after reversing the bits (see <a href="#bitorder">Bit order per backend</a>).</td></tr>
+                        <tr><td>Consistent, inconclusive, distinguishable</td><td>The verdicts of a measured pair (<code>measured_assessment</code>): consistent means no difference beyond shot noise with enough shots to detect one; inconclusive means too few shots to tell; distinguishable means the two outcome distributions differ beyond shot noise (see <a href="#stat">The shot-noise statistical test</a>).</td></tr>
+                        <tr><td>Runner key</td><td>The name of one run in a report: the backend's id (<code>qiskit</code>), or <code>&lt;id&gt;~opt&lt;L&gt;~run&lt;N&gt;</code> when a request runs one backend more than once (multi-run mode).</td></tr>
+                        <tr><td>Specimen</td><td>Which kind of image a backend ran from: a published release image, an image built locally, or not recorded. The report's <code>specimens</code> sums them up over all backends (see <a href="#specimens">The image each backend ran from</a>).</td></tr>
+                    </tbody>
+                </table></div>
                 <h3>Agreement classes</h3>
                 <p>See the label tables in <a href="#taxonomy">Agreement classification</a>.</p>
                 <h3>Not-comparable reasons (<code>metrics.reason</code>)</h3>
@@ -3013,7 +3098,7 @@
                     <tbody>
                         <tr><td><code>consistent</code></td><td>Neither the chi-square test nor the G-test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. The pair's <code>measured_assessment</code> is then <code>consistent_within_shot_noise</code>.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after BY correction.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts below 5 after pooling rare outcomes on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>), or neither test significant with power below 0.8 at α/(m·c_m) (<code>low_power</code>). <code>resolvable_by_more_shots</code> is false when the outcomes are too rare for the test at any practical shot count.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts below 5 after pooling rare outcomes on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>), or neither test significant with power below 0.8 at α/(m·c_m) (<code>low_power</code>). <code>resolvable_by_more_shots</code> is true when a shot count within the server's shot limit would make the test conclusive, false when none would, and null when more than half of either backend's shots fell on outcomes seen once (<code>support_characterised: false</code>), so the outcomes seen do not characterise the distribution and no shot count is recommended.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the chi-square test and the G-test is significant after BY correction.</td></tr>
                     </tbody>
                 </table></div>
@@ -3057,7 +3142,8 @@
                     <code>consistent_within_shot_noise</code>, the test of the whole distribution found no
                     difference beyond what sampling produces at this shot count; if it is
                     <code>inconclusive_low_shots</code>, rerun with more shots when
-                    <code>resolvable_by_more_shots</code> is true. A real difference is indicated by
+                    <code>resolvable_by_more_shots</code> is true; when it is null, the outcomes seen so
+                    far are too spread out to say how many shots would settle it. A real difference is indicated by
                     <code>distinguishable</code>, or by a <code>marginal_assessment</code> of
                     <code>marginal_distinguishable</code> (a single classical bit differs), whatever the
                     <code>measured_assessment</code>; its cause can be an unregistered convention, a
