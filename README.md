@@ -193,7 +193,7 @@ On the page, paste OpenQASM 2.0 into the Editor or load a file with **Import QAS
 Run.
 
 Each `run` saves its results in a new directory under `./qrosetta-results`: `plan.json`, and per
-job `request.json`, `job.json`, `report.json`, `summary.json`, on a local stack `ro-crate.zip`, a
+job `request.json`, `job.json`, `report.json`, `summary.json`, `ro-crate.zip` on a local stack whose server offers gated saves, a
 `SHA256SUMS` and a `STATUS`. The manual's "Command-line tool" section describes the layout. The
 server keeps a finished job for 24 hours by default on a local stack (30 minutes on other
 servers), so the page can reopen it under *Earlier runs from this browser*; a saved copy, an

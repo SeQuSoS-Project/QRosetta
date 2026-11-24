@@ -233,7 +233,7 @@
                 <p>
                     From the command line, <code>qrosetta run FILE.qasm</code> runs a circuit file in
                     statevector mode on the server's default backends, follows the job, saves the report
-                    and summary under <code>./qrosetta-results</code> and prints the page link of the job.
+                    and summary (and, on a local stack, the RO-Crate) under <code>./qrosetta-results</code> and prints the page link of the job.
                     <code>-m measured --shots 8200</code> runs it measured, <code>-b qiskit,cirq</code>
                     picks backends and <code>--seed 42</code> fixes the sampling seed; <code>qrosetta run
                     --help</code> lists every option (<a href="#cli">Command-line tool</a>).
@@ -512,7 +512,8 @@
                     included; <em>Add to export</em> adds the view with its settings and its own formats, and
                     the pencil reloads an added view to change it. A figure is exported as SVG by default,
                     and as PDF or PNG; a figure view that also has a table adds LaTeX and CSV of its data.
-                    A table view offers LaTeX and CSV by default, and Markdown, HTML and XLSX. One export
+                    A table view offers LaTeX and CSV by default, and Markdown, HTML and XLSX; the glossary
+                    view offers Markdown (default) and Text. One export
                     holds at most 60 items
                     (<code>limits.max_export_items</code>). Presets (Paper figures, Data for analysis,
                     Everything, Nothing extra) fill the list; the preset and the author and affiliation under
@@ -572,8 +573,9 @@
                 </p>
                 <h3 id="when-backends-disagree">When backends disagree</h3>
                 <p>
-                    A differing pair shows that one of the two backends is wrong, or that they read the
-                    circuit differently. To find which:
+                    A differing pair shows that one of the two backends is wrong, that they read the circuit
+                    differently, or, in measured mode, that one sample differs by chance (the Summary
+                    says when a flag may be chance). To find which:
                 </p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li>On the <strong>Agreement</strong> tab, click the pair's cell and read its label,
@@ -989,9 +991,9 @@
                         first limit stops a short circuit of nested definitions from expanding to millions
                         of gates. The second exists because several parsers keep a copy of a nested
                         definition for every application: eleven levels of definitions that each call the
-                        level below twice (4,094 nested applications) peak at about 710 MiB in the
+                        level below twice (4,094 nested applications) peaked at about 710 MiB in the
                         PennyLane runners and twelve levels at about 1,090 MiB, while 8,192 top-level calls
-                        of one definition take about 340 MiB. The bundled benchmark circuits are
+                        of one definition took about 340 MiB. The bundled benchmark circuits are
                         exempt.</li>
                     <li>With <code>apply_preprocessing</code> on, the API prepares each circuit (the
                         pytket round-trip) in a separate process limited to 1,024 MiB and 120 s
@@ -1003,10 +1005,10 @@
                         round-trip. The memory a preparation needs cannot be read from the circuit text,
                         so only circuits whose preparation has been measured are refused in advance. Among
                         the bundled circuits, the MQT Bench Grover circuits exceed the memory limit from 15
-                        qubits: <code>grover-noancilla</code> needs about 1.5 GiB and
-                        <code>grover-v-chain</code> about 1.2 GiB at 15 qubits, and both more than 2 GiB
-                        from 16 and 17 qubits respectively; every other bundled circuit stays under
-                        400 MiB. <code>GET /config</code> lists the bundled circuits over the server's
+                        qubits: in a measurement of each circuit's preparation, <code>grover-noancilla</code> needed
+                        about 1.5 GiB and <code>grover-v-chain</code> about 1.2 GiB at 15 qubits, both
+                        more than 2 GiB from 16 and 17 qubits respectively, and every other bundled circuit
+                        stayed under 400 MiB. <code>GET /config</code> lists the bundled circuits over the server's
                         limit as <code>bundled_over_prep_limit</code>. A run that includes one of them with
                         preprocessing on is refused with HTTP 400 naming the circuit, and the page says so
                         before it sends the run. Written-out versions of these circuits are refused
@@ -1240,7 +1242,7 @@
                         <code>report.json</code> and <code>summary.json</code> by default,
                         <code>ro-crate.zip</code> on a local stack whose server offers gated saves or
                         with <code>--crate</code>, <code>circuit-texts.json</code> with <code>--save
-                        circuits</code>, an experiment's <code>bundle.zip</code> in place of the report, a
+                        circuits</code>, an experiment's <code>bundle.zip</code> in place of the report and summary, a
                         <code>SHA256SUMS</code> over these files, and <code>STATUS</code>, written last:
                         <code>complete</code>, <code>complete: minimal</code>, <code>partial:
                         </code><em>reasons</em>, <code>crate-deferred</code>, <code>job-failed</code> or
@@ -1408,7 +1410,7 @@
                 <p>
                     Without an account, nothing is saved permanently on the server. The server keeps each
                     finished job for its retention time (24 hours by default on a local stack, 30 minutes
-                    on other servers, fewer when its job limits are reached; see <a href="#endpoints">How
+                    on other servers, less time when its job limits are reached; see <a href="#how-long-the-server-keeps-a-job">How
                     long the server keeps a job</a>), and this browser lists the jobs it submitted under
                     <em>Earlier runs from this browser</em> for that time (see
                     <a href="#quickstart">Quickstart</a>). To keep a result longer, download its report or
@@ -1787,7 +1789,7 @@
                     when both declare the same ordering, after bit reversal when one declares
                     <code>lsb</code> and the other <code>msb</code>. Only a match in that basis, with or
                     without a global phase, can make a pair agree. The pair record also gives the metric
-                    in the other basis and after the best qubit permutation. A statevector pair that
+                    in the other basis and, up to 7 qubits, after the best qubit permutation. A statevector pair that
                     matches only there is a disagreement; a measured pair is judged by the
                     <a href="#stat">shot-noise test</a>, which is run in the implied basis.
                 </p>
