@@ -8,7 +8,19 @@ from qrosetta_cli import jobstore, layout, localstack, manifest as mf, mode as m
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, buildkit, guard, hostload, installed, ports, preflight, profiles, quota, serve
+from qrosetta_cli.stack import (
+    actions,
+    buildkit,
+    gpu,
+    guard,
+    hostload,
+    installed,
+    ports,
+    preflight,
+    profiles,
+    quota,
+    serve,
+)
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import TRANSFER_TIMEOUT_SEC, Engine, choose_engine, timed_out
@@ -20,7 +32,8 @@ def open_stack(ctx, cpu_quota=None):
     the recorded stack setting) compose also gets the override that removes the CPU limits.
     Compose gets QROSETTA_NOT_INCLUDED, the services the release publishes no image of and this
     stack has not built from the build kit (empty in a checkout), so that every command gives
-    compose the API configuration `start` gives it."""
+    compose the API configuration `start` gives it. With an NVIDIA CDI specification on the host,
+    compose also gets the override giving the GPU services the GPU (`gpu`)."""
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
     release = None
     if mode.name == "checkout":
@@ -38,6 +51,7 @@ def open_stack(ctx, cpu_quota=None):
     if cpu_quota is None:
         cpu_quota = localstack.cpu_quota(ctx.env, ctx.cfg, stack.name)[0]
     quota.apply(engine, stack, cpu_quota, ctx.env)
+    gpu.apply(engine, stack, ctx.env)
     return mode, engine, stack
 
 

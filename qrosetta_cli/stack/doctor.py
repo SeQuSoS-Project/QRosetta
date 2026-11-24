@@ -10,6 +10,7 @@ import shutil
 import socket
 import stat
 import subprocess
+from types import SimpleNamespace
 from dataclasses import dataclass, field
 
 from qrosetta_cli import __version__, jobstore, layout, localstack, manifest as mf, output
@@ -89,6 +90,11 @@ class Host:
 
     def exists(self, path):
         return os.path.exists(path)
+
+    def cdi_spec(self, dirs):
+        from qrosetta_cli.stack import gpu
+
+        return gpu.nvidia_spec(dirs)
 
     def running_services(self, ctx):
         """Ids of the services whose containers this stack runs, or None when the stack cannot
@@ -765,11 +771,31 @@ def check_credentials(host, rep, path):
         rep.add("credentials", "PASS", f"{path} is private")
 
 
-def check_extras(host, rep):
+def check_extras(host, rep, choice=None):
+    from qrosetta_cli.stack import gpu as gpumod
+
     gpu = host.exists("/dev/nvidia0") or bool(host.which("nvidia-smi"))
-    rep.add(
-        "gpu", "INFO", "NVIDIA GPU present (cuQuantum can run)" if gpu else "no NVIDIA GPU (cuQuantum is unavailable)"
-    )
+    if not gpu:
+        rep.add("gpu", "INFO", "no NVIDIA GPU (cuQuantum is unavailable)")
+    else:
+        engine = SimpleNamespace(name=choice.name, info=choice.info) if choice else None
+        dirs = gpumod.spec_dirs(engine) if engine else ()
+        spec = getattr(host, "cdi_spec", gpumod.nvidia_spec)(dirs) if dirs else None
+        if spec:
+            rep.add("gpu", "PASS", f"NVIDIA GPU with the CDI specification {spec} (cuQuantum gets the GPU)")
+        else:
+            where = (
+                "in the directories docker reads (CDI enabled in its daemon.json)"
+                if engine and engine.name == "docker"
+                else "in /etc/cdi or /var/run/cdi"
+            )
+            rep.add(
+                "gpu",
+                "WARN",
+                f"NVIDIA GPU present but no CDI specification for nvidia.com/gpu {where}; cuQuantum runs without it",
+                gpumod.SPEC_STEP,
+                [("Write the CDI specification (NVIDIA Container Toolkit), then start again:", [gpumod.SPEC_STEP])],
+            )
     tool = host.which("apptainer") or host.which("singularity")
     rep.add("apptainer", "INFO", f"Apptainer at {tool}" if tool else "Apptainer not installed (HPC images only)")
 
@@ -941,7 +967,7 @@ def run(ctx, host=None):
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_buildkit(rep, _mode_name(ctx))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
-    check_extras(host, rep)
+    check_extras(host, rep, choice)
     port_row = next((c for c in rep.checks if c.id == "port"), None)
     mine = config is not None and port_row is not None and port_row.status == "PASS"
     if mine:

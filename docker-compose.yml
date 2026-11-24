@@ -691,6 +691,7 @@ services:
       org.qrosetta.id: cuquantum
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "gpu,full"
+      org.qrosetta.gpu: nvidia
     container_name: cuquantum-runner
     <<: *qrosetta-hardening
     environment:

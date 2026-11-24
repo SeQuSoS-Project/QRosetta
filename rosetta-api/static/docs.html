@@ -108,7 +108,10 @@
                     terms, the published release images leave out the myQLM and cuQuantum backends and
                     the BQSKit compiler; <code>qrosetta build myqlm cuquantum bqskit</code> builds them on
                     this computer, from the build files the package carries or from a checkout of the
-                    repository, and cuQuantum also needs an NVIDIA GPU.
+                    repository, and cuQuantum also needs an NVIDIA GPU. <code>qrosetta start</code> gives
+                    cuQuantum the GPU when the host has a CDI specification for <code>nvidia.com/gpu</code>
+                    (<code>sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml</code>; Docker reads it
+                    only with CDI enabled), and <code>qrosetta doctor</code> says whether it found one.
                 </p>
                 <p>
                     A server runs in one of two execution modes. In <em>local mode</em> (a Docker Compose

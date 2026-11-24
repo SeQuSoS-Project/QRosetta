@@ -443,11 +443,18 @@ def _entries(transport, path, query, headers=None):
 def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
     """Return when the API is ready (GET /ready, when the server offers it) and every started runner
     and compiler is available, polling every 2 s; fresh probes (GET /runners?fresh=true) when the
-    server offers them, else its cached availability."""
+    server offers them, else its cached availability. A GPU service on a host without an NVIDIA
+    CDI specification is not waited for."""
     from qrosetta_cli.client import handshake, servers
+    from qrosetta_cli.stack import gpu
 
     url = stack_url(engine, stack)
     wanted = {stack.services[s].id: stack.kind_of(s) for s in services if stack.kind_of(s) in ("runner", "compiler")}
+    no_gpu = [] if getattr(stack, "gpu_spec", None) else [i for i in getattr(stack, "gpu_services", []) if i in wanted]
+    if no_gpu:
+        progress(gpu.without_gpu_note(no_gpu))
+        for key in no_gpu:
+            del wanted[key]
     if not url or not wanted:
         return []
     server = servers.Server("local", url, "compose port")

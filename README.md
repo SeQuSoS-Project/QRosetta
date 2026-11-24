@@ -146,6 +146,9 @@ myQLM, cuQuantum and BQSKit are not published, because their licences do not all
 distribute their images (`THIRD_PARTY_NOTICES.md`). `qrosetta build NAME` builds them from the
 package's build kit (see "Build the images yourself").
 cuQuantum also needs an NVIDIA GPU; without one it is listed as unavailable and never dispatched.
+`qrosetta start` gives it the GPU when the host has a CDI specification for `nvidia.com/gpu`, which
+the NVIDIA Container Toolkit writes (`sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`);
+Docker reads it only with CDI enabled. `qrosetta doctor` says whether it found one.
 
 Sizes are approximate, in GB (10^9 bytes), for the release images. "Size after `pull`" is the uncompressed layer size with the base-image layers counted once and every other
 layer once per image. "Download" is the sum of the distinct compressed layers the registry sends.

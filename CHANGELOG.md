@@ -7,6 +7,17 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- `qrosetta start` gives cuQuantum the NVIDIA GPU. The compose file of an installed release had no
+  device for it, so cuQuantum was unavailable even on a host with a GPU and `start -d --profile
+  full` or `gpu` ended with exit 16. `start` now adds the device `nvidia.com/gpu=all` through a
+  generated override, `compose.gpu.yaml`, when the host has a CDI specification for `nvidia.com/gpu`
+  (podman: `/etc/cdi`, `/var/run/cdi`; Docker: the directories `docker info` lists with CDI
+  enabled). Without one, `start` no longer waits for cuQuantum: it says why and the server lists it
+  as unavailable. `qrosetta doctor` reports the specification it found, or warns when the host has
+  a GPU and none.
+
 ## [2.0.0] - 2026-11-24
 
 Everything since v1.0.0. Timings, memory figures, counts and agreement

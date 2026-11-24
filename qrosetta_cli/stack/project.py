@@ -47,6 +47,8 @@ class Stack:
     release: dict | None = None
     cpu_quota: bool = True
     cpu_override_sha256: str | None = None
+    gpu_spec: str | None = None
+    gpu_services: list = field(default_factory=list)
     extra_image_refs: dict = field(default_factory=dict)
 
     @property
