@@ -487,6 +487,11 @@ Cite the version you used (`qrosetta version` prints it). The metadata is in
 offers as "Cite this repository"; `.zenodo.json` and `codemeta.json` give the same title, authors,
 version and licence.
 
+Zenodo archives every release. Version 2.0.0 is
+[10.5281/zenodo.24497797](https://doi.org/10.5281/zenodo.24497797); the DOI
+[10.5281/zenodo.24497796](https://doi.org/10.5281/zenodo.24497796) always resolves to the newest
+version.
+
 ## Licence
 
 Apache License 2.0 ([LICENSE](https://github.com/SeQuSoS-Project/QRosetta/blob/main/LICENSE)).
