@@ -394,6 +394,20 @@ def up_flags(adding, recreate=False):
     return (["--force-recreate"] if recreate else []) + (["--no-deps"] if adding else [])
 
 
+SILENT_CHECKS_TEXT = (
+    "Every health check failed at once with no output: the engine could not run the check inside the "
+    "container, whatever the API's state. podman 6.2.0 with crun 1.31 does this for containers created "
+    "through Docker Compose; runc does not. To use runc, install the runc package, set "
+    'runtime = "runc" under [engine] in ~/.config/containers/containers.conf (a new file needs both '
+    "lines), run `systemctl --user restart podman.socket`, and start again."
+)
+
+
+def silent_health_checks(checks):
+    """True when at least three health checks ran and each failed with exit code 1 and no output."""
+    return len(checks) >= 3 and all(c.get("ExitCode") == 1 and not (c.get("Output") or "").strip() for c in checks)
+
+
 def api_health_report(engine, stack, tail=20):
     """The API container's last health check and the last `tail` lines of its log, read from this
     stack's labelled API container; '' when there is none."""
@@ -409,6 +423,8 @@ def api_health_report(engine, stack, tail=20):
         last = checks[-1]
         lines.append(f"Last health check of {api.name}: exit code {last.get('ExitCode')}")
         lines += ["  " + x for x in (last.get("Output") or "").strip().splitlines()[-5:]]
+    if engine.name == "podman" and silent_health_checks(checks):
+        lines.append(SILENT_CHECKS_TEXT)
     out = engine.cli("logs", "--timestamps", "--tail", str(tail), api.id)
     logged = sorted((out.stdout or "").splitlines() + (out.stderr or "").splitlines(), key=lambda x: x.split(" ", 1)[0])
     if logged:

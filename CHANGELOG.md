@@ -29,6 +29,9 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 - `qrosetta start -d --profile cpu` (or `gpu`, `full`) on an installed release stopped at "No image for
   myqlm"; it now starts the profile's published services and names myQLM, cuQuantum and BQSKit as not
   included in the release, with the `qrosetta build` command, as `start -d` without a profile does.
+- When every health check of the API failed at once without output on podman, `start` says the engine
+  could not run the check and how to switch to runc (seen with podman 6.2.0 and crun 1.31 for
+  containers created through Docker Compose).
 
 ## [2.0.1] - 2026-11-24
 

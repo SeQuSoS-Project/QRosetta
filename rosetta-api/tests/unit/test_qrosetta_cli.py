@@ -642,6 +642,23 @@ def _unhealthy_api(fake):
     return fake
 
 
+def test_start_names_runc_when_every_health_check_failed_without_output(fake, project, env, capsys):
+    """Arch, podman 6.2.0 + crun 1.31 (2026-11-24 VM): containers created through Docker Compose
+    fail every health check instantly with no output; with runc they pass."""
+    _unhealthy_api(fake)
+    fake.containers["c-rosetta-api"]["State"]["Health"]["Log"] = [{"ExitCode": 1, "Output": ""}] * 5
+    assert cli(fake, project, env, ["start", "-d"]) == Exit.ENGINE
+    err = capsys.readouterr().err
+    assert "podman 6.2.0 with crun 1.31" in err and 'runtime = "runc"' in err
+
+
+def test_silent_health_checks_need_three_empty_failures():
+    assert serve.silent_health_checks([{"ExitCode": 1, "Output": ""}] * 3)
+    assert not serve.silent_health_checks([{"ExitCode": 1, "Output": ""}] * 2)
+    assert not serve.silent_health_checks([{"ExitCode": 1, "Output": ""}] * 3 + [{"ExitCode": 1, "Output": "Traceback"}])
+    assert not serve.silent_health_checks([{"ExitCode": 0, "Output": ""}] * 4)
+
+
 def test_start_unhealthy_api_prints_its_last_health_check_and_log(fake, project, env, capsys):
     foreign = fake.add("rosetta-api-copy", {"com.docker.compose.project": "other",
                                             "com.docker.compose.service": "api"})
