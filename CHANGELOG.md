@@ -7,6 +7,12 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 
 ## [Unreleased]
 
+### Added
+
+- Manual (preprocessing section): QRosetta follows Qiskit's `qelib1.inc`, which adds 19 gates to
+  the file of the OpenQASM 2.0 paper and gives `cu3` an extra phase on the control; Qibo's parser follows
+  the paper's `cu3`, so Qibo can differ from the other backends on `cu3` circuits.
+
 ### Fixed
 
 - `qrosetta start` gives cuQuantum the NVIDIA GPU. The compose file of an installed release had no
@@ -17,6 +23,12 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
   enabled). Without one, `start` no longer waits for cuQuantum: it says why and the server lists it
   as unavailable. `qrosetta doctor` reports the specification it found, or warns when the host has
   a GPU and none.
+- Images built from a release's build kit (myQLM, cuQuantum, BQSKit) record `<commit>+buildkit`,
+  which was compared as a different commit from the published images of the same release: jobs
+  carried the timing caveat `cross_backend_image_commits` and a `specimens` note that the
+  measurement code may differ, and `qrosetta selftest` warned "a mixed stack" on each image
+  commit. All three now read `<commit>+buildkit` as `<commit>` (`timing-caveats-2026.11.24.1`);
+  the self-test's provenance warning for a locally built image stays.
 
 ## [2.0.0] - 2026-11-24
 

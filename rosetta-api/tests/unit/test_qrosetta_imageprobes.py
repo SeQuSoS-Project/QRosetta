@@ -147,3 +147,14 @@ def test_the_cpu_quota_rule_reads_the_stack_setting(env, capsys):
     data = envelope(capsys)["data"]
     assert data["cli_rules_applied"] == [{"rule": "cpu_quota_off", "backend": "qiskit"}]
     assert any("stack started without the CPU quota" in w for w in data["warnings"])
+
+
+def test_an_image_from_the_release_build_kit_has_the_api_commit():
+    from qrosetta_cli.client import imageprobes
+
+    row = {"versions": {"image_identity": {"git_sha": "abc1234+buildkit", "source": "built_locally"}}}
+    status, reason, sha = imageprobes._commit(row, "abc1234")
+    assert status == imageprobes.PASS and sha == "abc1234+buildkit"
+    assert reason == "built locally from abc1234+buildkit (the release's build kit), as the API"
+    status, _, _ = imageprobes._commit(row, "def5678")
+    assert status == imageprobes.WARN

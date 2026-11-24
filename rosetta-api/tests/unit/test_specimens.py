@@ -144,3 +144,16 @@ def test_crate_of_a_supplied_report_marks_specimens_as_supplied(lock_on_server):
     assert graph["#specimens"]["value"] == "all_published"
     assert "As supplied in the report" in graph["#specimens"]["description"]
     assert "runner_lock_files" not in prov
+
+
+def test_a_build_kit_image_counts_as_its_release_commit():
+    sha = "17553a127703f6a26b9d082ded9cbf6ea31b669f"
+    published = {"kind": "published_release", "release": "2.0.1", "image_git_sha": sha}
+    local = {"kind": "built_locally", "release": "2.0.1", "image_git_sha": sha + "+buildkit"}
+    rec = specimens._roll_up([("qiskit", published), ("myqlm", local)], [])
+    assert rec["statement"] == "mixed"
+    assert rec["image_git_shas"] == [sha, sha + "+buildkit"]
+    assert not any("different commits" in n for n in rec["notes"])
+    other = {**local, "image_git_sha": "1b1a718d95dc39189439c0f948f7ddd25c0df817+buildkit"}
+    rec = specimens._roll_up([("qiskit", published), ("myqlm", other)], [])
+    assert any("2 different commits" in n for n in rec["notes"])

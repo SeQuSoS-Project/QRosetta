@@ -82,6 +82,9 @@ def _registry(row):
     return PASS, "; ".join(parts)
 
 
+BUILDKIT_SUFFIX = "+buildkit"
+
+
 def _commit(row, api_sha):
     versions = row.get("versions") or {}
     identity = versions.get("image_identity") or {}
@@ -102,9 +105,10 @@ def _commit(row, api_sha):
         return FAIL, f"built from uncommitted changes ({sha}): source not identifiable", sha
     source = identity.get("source") if identity.get("source") not in UNIDENTIFIED else None
     built = f"{source.replace('_', ' ')} from {sha}" if source else f"built from {sha}"
-    if api_sha and api_sha != sha:
+    if api_sha and api_sha.removesuffix(BUILDKIT_SUFFIX) != sha.removesuffix(BUILDKIT_SUFFIX):
         return WARN, f"{built}; the API image is from {api_sha} (a mixed stack)", sha
-    return PASS, f"{built}{', as the API' if api_sha else ''}", sha
+    kit = " (the release's build kit)" if sha.endswith(BUILDKIT_SUFFIX) else ""
+    return PASS, f"{built}{kit}{', as the API' if api_sha else ''}", sha
 
 
 def check_image(row, kind, api_sha, key=None):

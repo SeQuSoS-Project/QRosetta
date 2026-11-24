@@ -229,3 +229,13 @@ def test_the_page_has_no_copy_of_the_tag_rules():
     for rule in ("THROTTLE_SHOWN_SHARE", "OUTSIDE_PROCESS_SHOWN_SEC", "UNSTABLE_SPREAD", "coreClasses(",
                  "simulationCoreSpeeds", "0.1 * cg", "* 1.1"):
         assert rule not in js, rule
+
+
+def test_an_image_built_from_the_release_build_kit_has_the_release_commit():
+    sha = "17553a127703f6a26b9d082ded9cbf6ea31b669f"
+    results = [_ok("a", image_git_sha=sha), _ok("b", image_git_sha=sha + "+buildkit")]
+    assert "cross_backend_image_commits" not in [c["code"] for c in tc.summarize((r["simulator"], r) for r in results)]
+    results.append(_ok("c", image_git_sha="1b1a718d95dc39189439c0f948f7ddd25c0df817"))
+    assert "cross_backend_image_commits" in [c["code"] for c in tc.summarize((r["simulator"], r) for r in results)]
+    results[2]["image_git_sha"] = sha + "-dirty"
+    assert "cross_backend_image_commits" in [c["code"] for c in tc.summarize((r["simulator"], r) for r in results)]

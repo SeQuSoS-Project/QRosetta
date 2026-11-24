@@ -5,6 +5,7 @@ process reported, and the report's ``specimens`` roll-up."""
 NOT_RECORDED = "not recorded"
 PUBLISHED = "published_release"
 BUILT_LOCALLY = "built_locally"
+BUILDKIT_SUFFIX = "+buildkit"
 
 STATEMENTS = {
     "all_published": "Every backend that ran reports an image built by the release pipeline, of one release.",
@@ -85,10 +86,11 @@ def _roll_up(pairs, no_result) -> dict:
     backends = {k: specs[0] if len(specs) == 1 else {"varies": specs} for k, specs in seen.items()}
     statement = _statement(everything)
     commits = sorted({str(s["image_git_sha"]) for s in everything})
+    sources = sorted({c.removesuffix(BUILDKIT_SUFFIX) for c in commits})
     notes = []
-    if len(commits) > 1:
-        notes.append(f"The images were built from {len(commits)} different commits "
-                     f"({', '.join(commits)}), so the measurement code (qrosetta_commons) may "
+    if len(sources) > 1:
+        notes.append(f"The images were built from {len(sources)} different commits "
+                     f"({', '.join(sources)}), so the measurement code (qrosetta_commons) may "
                      "differ between backends.")
     dirty = sorted(k for k, specs in seen.items()
                    if any(str(s["image_git_sha"]).endswith("-dirty") for s in specs))

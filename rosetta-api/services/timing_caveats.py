@@ -4,12 +4,13 @@ outside process, unstable, mixed cores) and its "Before comparing times" list ar
 these records. Derived only from fields the results already carry; nothing here changes a
 timing, a metric or an agreement label."""
 
-TIMING_CAVEATS_VERSION = "timing-caveats-2026.10.27.3"
+TIMING_CAVEATS_VERSION = "timing-caveats-2026.11.24.1"
 
 THROTTLE_SHOWN_SHARE = 0.01
 OUTSIDE_PROCESS_SHOWN_SEC = 0.005
 OUTSIDE_PROCESS_SHOWN_SHARE = 0.1
 UNSTABLE_SPREAD = 1.3
+BUILDKIT_SUFFIX = "+buildkit"
 CORE_CLASS_STEP = 1.1
 _EMULATED_CPU_MODELS = ("VirtualApple", "QEMU")
 
@@ -190,7 +191,7 @@ def _cross_backend(results: list) -> list:
     quotas = {_quota(r)[1] for r in results if _quota(r)[0]}
     if len(quotas) > 1:
         out.append(_caveat("cross_backend_cpu_quota", ["cpu_environment.cpu_quota_cores"]))
-    commits = {str(r.get("image_git_sha")) for r in results if r.get("image_git_sha")}
+    commits = {str(r.get("image_git_sha")).removesuffix(BUILDKIT_SUFFIX) for r in results if r.get("image_git_sha")}
     if len(commits) > 1:
         out.append(_caveat("cross_backend_image_commits", ["image_git_sha"]))
     return out
