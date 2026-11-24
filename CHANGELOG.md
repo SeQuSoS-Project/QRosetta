@@ -7,7 +7,9 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 
 ## [Unreleased]
 
-Everything since v1.0.0, to be released as 2.0.0. Timings, memory figures, counts and agreement
+## [2.0.0] - 2026-11-24
+
+Everything since v1.0.0. Timings, memory figures, counts and agreement
 labels from v1.0.0 are not comparable with this version: the measurement windows, the resource
 limits, the counts keys and the statistics all changed (see Changed).
 
@@ -493,5 +495,6 @@ First public snapshot. Do not reuse its results: its Qrisp adapter returned an a
 all-zero counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of
 several adapters were corrected after it. Use the newest release.
 
-[Unreleased]: https://github.com/SeQuSoS-Project/QRosetta/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/SeQuSoS-Project/QRosetta/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/SeQuSoS-Project/QRosetta/releases/tag/v1.0.0
