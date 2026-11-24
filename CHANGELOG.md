@@ -13,6 +13,8 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
   the file of the OpenQASM 2.0 paper and gives `cu3` an extra phase on the control; Qibo's parser follows
   the paper's `cu3`, so Qibo can differ from the other backends on `cu3` circuits.
 
+## [2.0.1] - 2026-11-24
+
 ### Fixed
 
 - `qrosetta start` gives cuQuantum the NVIDIA GPU. The compose file of an installed release had no
@@ -518,6 +520,7 @@ First public snapshot. Do not reuse its results: its Qrisp adapter returned an a
 all-zero counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of
 several adapters were corrected after it. Use the newest release.
 
-[Unreleased]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/SeQuSoS-Project/QRosetta/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/SeQuSoS-Project/QRosetta/releases/tag/v1.0.0
