@@ -11,7 +11,7 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.24497796"
     description: "All versions; resolves to the newest"
-title: "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis"
+title: "Quantum Rosetta: Comparing Quantum Circuit Simulators Under a Unified Measurement Protocol"
 authors:
   - family-names: Sarker
     given-names: Shaswato

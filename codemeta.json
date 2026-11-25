@@ -1,7 +1,7 @@
 {
   "@context": "https://w3id.org/codemeta/3.0",
   "type": "SoftwareSourceCode",
-  "name": "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis",
+  "name": "Quantum Rosetta: Comparing Quantum Circuit Simulators Under a Unified Measurement Protocol",
   "description": "QRosetta is a microservice platform for running one OpenQASM 2.0 circuit across heterogeneous quantum simulator backends and comparing their resource use, endpoint semantics, raw outputs, and pairwise agreement under a common runner contract.",
   "version": "2.0.2",
   "datePublished": "2026-11-25",
