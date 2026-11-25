@@ -7,6 +7,8 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-11-25
+
 ### Added
 
 - Manual (preprocessing section): QRosetta follows Qiskit's `qelib1.inc`, which adds 19 gates to
@@ -548,7 +550,8 @@ First public snapshot. Do not reuse its results: its Qrisp adapter returned an a
 all-zero counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of
 several adapters were corrected after it. Use the newest release.
 
-[Unreleased]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/SeQuSoS-Project/QRosetta/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/SeQuSoS-Project/QRosetta/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/SeQuSoS-Project/QRosetta/releases/tag/v1.0.0
