@@ -534,7 +534,8 @@ Cite the version you used (`qrosetta version` prints it). The metadata is in
 offers as "Cite this repository"; `.zenodo.json` and `codemeta.json` give the same title, authors,
 version and licence.
 
-Zenodo archives every release. Version 2.0.1 is
+Zenodo archives every release. Version 2.0.2 is
+[10.5281/zenodo.24529372](https://doi.org/10.5281/zenodo.24529372), version 2.0.1
 [10.5281/zenodo.24505798](https://doi.org/10.5281/zenodo.24505798) and version 2.0.0
 [10.5281/zenodo.24497797](https://doi.org/10.5281/zenodo.24497797); the DOI
 [10.5281/zenodo.24497796](https://doi.org/10.5281/zenodo.24497796) always resolves to the newest
