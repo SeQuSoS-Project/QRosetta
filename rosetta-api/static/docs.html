@@ -842,6 +842,21 @@
                     <code>u3</code>. With preprocessing off these gates are refused.
                 </p>
                 <p>
+                    <strong>Which <code>qelib1.inc</code>.</strong> Gate names and their matrices follow
+                    Qiskit's <code>qelib1.inc</code> (Qiskit 2.5.2's copy), the file the structure checks
+                    read and the inserted definitions come from. The file published with the OpenQASM 2.0
+                    paper defines 23 gates; Qiskit's copy adds 19 (<code>u0</code>, <code>u</code>,
+                    <code>p</code>, <code>sx</code>, <code>sxdg</code>, <code>swap</code>,
+                    <code>cswap</code>, <code>crx</code>, <code>cry</code>, <code>cp</code>,
+                    <code>csx</code>, <code>cu</code>, <code>rxx</code>, <code>rzz</code>,
+                    <code>rccx</code>, <code>rc3x</code>, <code>c3x</code>, <code>c3sqrtx</code> and
+                    <code>c4x</code>). Of the gates in both files only <code>cu3</code> has a different
+                    matrix: Qiskit's copy also applies <code>u1((lambda+phi)/2)</code> to the control, a
+                    phase on the control's |1&#x27E9; branch. Qibo's parser follows the paper's
+                    <code>cu3</code>, so on a circuit with <code>cu3</code> Qibo's result can differ from
+                    the other backends by that phase.
+                </p>
+                <p>
                     The RO-Crate stores the circuit as submitted (<code>circuit.qasm</code>), the circuit
                     the API sent to each runner (<code>dispatched_circuits/&lt;runner&gt;.qasm</code>;
                     <code>&lt;circuit&gt;/&lt;runner&gt;.qasm</code> in a playlist crate) and the circuit
