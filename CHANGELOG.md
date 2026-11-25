@@ -15,6 +15,10 @@ changes, each with its evidence, are in `DESIGN_DECISIONS.md`.
 
 ### Fixed
 
+- The stack did not start on a current Fedora 45 (podman 6.2.0 with crun 1.31, also Arch): every health
+  check of a container created through Docker Compose fails there, and nginx waited for the API to
+  be healthy. nginx now waits for the API container to start; `qrosetta start -d` still waits until
+  the API answers `GET /ready`.
 - README "First run": `qrosetta export crate` after the two-mode example run exited 2 (a result
   with several jobs needs `--job MODE`); the example now passes `--job measured`, and the manual's
   command table lists `--job` for `export crate` and `export report`.

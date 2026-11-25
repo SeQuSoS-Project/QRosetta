@@ -159,3 +159,17 @@ def test_compose_healthcheck_arguments_hold_no_whitespace():
     api = compose["services"]["api"]["healthcheck"]["test"]
     assert api[:3] == ["CMD", "python3", "-c"]
     compile(api[3], "<healthcheck>", "exec")
+
+
+def test_nginx_waits_for_the_api_container_to_start_not_for_its_health_status():
+    """podman 6.2.0 with crun 1.31 (Fedora 45 updates, Arch; 2026-11-25) fails every health check of a
+    container created through Docker Compose, so a service_healthy gate never let nginx start.
+    `qrosetta start -d` waits on GET /ready instead."""
+    import yaml
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[3]
+    compose = yaml.safe_load((repo / "docker-compose.yml").read_text())
+    conditions = [dep.get("condition") for svc in compose["services"].values()
+                  for dep in (svc.get("depends_on") or {}).values() if isinstance(dep, dict)]
+    assert compose["services"]["nginx"]["depends_on"]["api"]["condition"] == "service_started"
+    assert "service_healthy" not in conditions
