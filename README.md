@@ -552,7 +552,7 @@ RO-Crates the server builds declare their contents under CC BY 4.0.
 
 Shaswato Sarker, Majid Haghparast and Tommi Mikkonen, University of Jyväskylä.
 
-Questions and support: <info@qrosetta.dev>. Principal investigator: Majid Haghparast
+Questions and support: <info@qrosetta.dev>. Majid Haghparast
 <majid.m.haghparast@jyu.fi>.
 
 This work was supported by Business Finland through the project SeQuSoS (grant 112/31/2024) and
